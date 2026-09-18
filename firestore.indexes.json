@@ -194,11 +194,6 @@
       "collectionGroup": "sessions",
       "queryScope": "COLLECTION",
       "fields": [{ "fieldPath": "isActive", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }]
-    },
-    {
-      "collectionGroup": "gradingScales",
-      "queryScope": "COLLECTION",
-      "fields": [{ "fieldPath": "isDefault", "order": "ASCENDING" }]
     }
   ],
   "fieldOverrides": []

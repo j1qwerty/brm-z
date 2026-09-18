@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+vite.config.*.timestamp-*.mjs
+
+# Local env files and secrets - never commit
+.env
+.env.local
+.env.*.local
+.env*.local
+scripts/service-account.json
+**/service-account*.json
+**/*-service-account*.json
+*.pem
+*.key
+firebase-data/
+
+# Firebase (keep .firebaserc tracked - it stores the project alias)
+.firebase/
+firebase-debug.log
+firestore-debug.log
+database-debug.log
+ui-debug.log
+pubsub-debug.log
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.code-workspace
+
+# Netlify
+.netlify/

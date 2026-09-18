@@ -1,0 +1,205 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "role", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "role", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "students",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "students",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "staff",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "staffType", "order": "ASCENDING" }, { "fieldPath": "name", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "attendance",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "date", "order": "ASCENDING" }, { "fieldPath": "personType", "order": "ASCENDING" }, { "fieldPath": "classId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "attendance",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "personType", "order": "ASCENDING" }, { "fieldPath": "personId", "order": "ASCENDING" }, { "fieldPath": "date", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "attendance",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "personType", "order": "ASCENDING" }, { "fieldPath": "personId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "attendance",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "personType", "order": "ASCENDING" }, { "fieldPath": "date", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "invoices",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "sessionId", "order": "ASCENDING" }, { "fieldPath": "periodKey", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "invoices",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "studentId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "invoices",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "studentId", "order": "ASCENDING" }, { "fieldPath": "feeTypeId", "order": "ASCENDING" }, { "fieldPath": "periodKey", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "invoices",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "payments",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "studentId", "order": "ASCENDING" }, { "fieldPath": "paidAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "payments",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "paidAt", "order": "DESCENDING" }, { "fieldPath": "createdAt", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "feeAssignments",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "sessionId", "order": "ASCENDING" }, { "fieldPath": "feeTypeId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "assignments",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "subjectId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "assignments",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "teacherId", "order": "ASCENDING" }, { "fieldPath": "classId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "marks",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "examId", "order": "ASCENDING" }, { "fieldPath": "subjectId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "marks",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "examId", "order": "ASCENDING" }, { "fieldPath": "studentId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "marks",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "studentId", "order": "ASCENDING" }, { "fieldPath": "examId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "timetable",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "section", "order": "ASCENDING" }, { "fieldPath": "day", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "timetable",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "teacherId", "order": "ASCENDING" }, { "fieldPath": "day", "order": "ASCENDING" }, { "fieldPath": "periodNo", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "timetable",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "teacherId", "order": "ASCENDING" }, { "fieldPath": "sessionId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "leaves",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "personId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "leaves",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "readAt", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "notices",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "publishAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "notices",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "publishAt", "order": "DESCENDING" }, { "fieldPath": "createdAt", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "threadId", "order": "ASCENDING" }, { "fieldPath": "sentAt", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "ptms",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "date", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "ptms",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "teacherId", "order": "ASCENDING" }, { "fieldPath": "date", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "documents",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "ownerId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "templates",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "kind", "order": "ASCENDING" }, { "fieldPath": "isDefault", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "exams",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "sessionId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "certificates",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "type", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "calendarEvents",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "date", "order": "ASCENDING" }, { "fieldPath": "type", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "sessions",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "isActive", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "gradingScales",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "isDefault", "order": "ASCENDING" }]
+    }
+  ],
+  "fieldOverrides": []
+}

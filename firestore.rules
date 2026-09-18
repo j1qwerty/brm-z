@@ -1,0 +1,336 @@
+rules_version = '2';
+
+// BMRC School Management - Firestore Security Rules
+// Mirrors the role matrix in README section "Roles & what each can see".
+// Default deny all. Every collection has soft-delete fields (deletedAt/deletedBy);
+// clients only ever set them via update - no hard deletes are permitted anywhere.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function role() {
+      return userDoc().role;
+    }
+
+    function isActiveUser() {
+      return signedIn() && userDoc().status == 'active';
+    }
+
+    function isAdmin() {
+      return isActiveUser() && role() == 'admin';
+    }
+
+    function isTeacher() {
+      return isActiveUser() && role() == 'teacher';
+    }
+
+    function isAccountant() {
+      return isActiveUser() && role() == 'accountant';
+    }
+
+    function isStaff() {
+      return isActiveUser() && role() == 'staff';
+    }
+
+    function isStudent() {
+      return isActiveUser() && role() == 'student';
+    }
+
+    function isParent() {
+      return isActiveUser() && role() == 'parent';
+    }
+
+    function myStudentId() {
+      return userDoc().get('studentId', '');
+    }
+
+    function myStaffId() {
+      return userDoc().get('staffId', '');
+    }
+
+    function myChildIds() {
+      return userDoc().get('childIds', []);
+    }
+
+    function isMyChild(studentId) {
+      return isParent() && studentId in myChildIds();
+    }
+
+    function notDeleted(d) {
+      return d.get('deletedAt', null) == null;
+    }
+
+    function softDeleteOk() {
+      // Soft delete = update that sets deletedAt. Allowed for admin everywhere.
+      return isAdmin();
+    }
+
+    // Generic read that respects soft delete for lists
+    function canReadCommon() {
+      return isActiveUser();
+    }
+
+    // ---------- users ----------
+    match /users/{uid} {
+      // Signup: create own doc as pending with a non-admin role
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.role in ['teacher', 'accountant', 'staff', 'student', 'parent'];
+
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid)
+        || (isTeacher() && resource.data.status == 'active');
+      // Only admin can change role/status; users may edit their own profile fields
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.status == resource.data.status);
+      allow delete: if false; // soft delete only (admin via update)
+    }
+
+    // ---------- sessions ----------
+    match /sessions/{id} {
+      allow read: if canReadCommon() && notDeleted(resource.data);
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---------- classes + subjects subcollection ----------
+    match /classes/{classId} {
+      allow read: if canReadCommon() && notDeleted(resource.data);
+      allow create, update: if isAdmin();
+      allow delete: if false;
+
+      match /subjects/{subjectId} {
+        allow read: if canReadCommon() && notDeleted(resource.data);
+        allow create, update: if isAdmin();
+        allow delete: if false;
+      }
+    }
+
+    // ---------- assignments (teacher-class-subject matrix) ----------
+    match /assignments/{id} {
+      allow read: if (canReadCommon() && notDeleted(resource.data))
+        || (isTeacher() && resource.data.teacherId == myStaffId());
+      allow write: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---------- students ----------
+    match /students/{id} {
+      allow get: if isAdmin() || isTeacher() || isAccountant()
+        || (isStudent() && myStudentId() == id)
+        || isMyChild(id)
+        || isStaff();
+      allow list: if isAdmin() || isTeacher() || isStaff();
+
+      allow create: if isAdmin();
+      // Admin full update; teacher may update students of their classes (limited client-side)
+      allow update: if isAdmin() || isTeacher();
+      allow delete: if false; // soft delete via admin update
+    }
+
+    // ---------- staff ----------
+    match /staff/{id} {
+      allow get: if isAdmin() || isTeacher() || (isActiveUser() && myStaffId() == id);
+      allow list: if isAdmin() || isTeacher();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---------- attendance ----------
+    match /attendance/{id} {
+      allow read: if isAdmin() || isTeacher() || isAccountant()
+        || (isStudent() && resource.data.personId == myStudentId())
+        || (isParent() && resource.data.personId in myChildIds())
+        || (isStaff() && resource.data.personId == myStaffId());
+      // Teachers mark registers; admin can too. validated client-side against assignments.
+      allow create, update: if isAdmin() || isTeacher();
+      allow delete: if false;
+    }
+
+    // ---------- fees ----------
+    match /feeTypes/{id} {
+      allow read: if isAdmin() || isAccountant();
+      allow write: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /feeAssignments/{id} {
+      allow read: if isAdmin() || isAccountant();
+      allow write: if isAdmin() || isAccountant();
+      allow delete: if false;
+    }
+
+    match /invoices/{id} {
+      allow read: if isAdmin() || isAccountant()
+        || (isStudent() && resource.data.studentId == myStudentId())
+        || (isParent() && resource.data.studentId in myChildIds());
+      allow create, update: if isAdmin() || isAccountant();
+      allow delete: if false;
+    }
+
+    match /payments/{id} {
+      allow read: if isAdmin() || isAccountant()
+        || (isStudent() && resource.data.studentId == myStudentId())
+        || (isParent() && resource.data.studentId in myChildIds());
+      allow create: if isAdmin() || isAccountant();
+      allow update: if isAdmin(); // corrections only
+      allow delete: if false;
+    }
+
+    // ---------- exams, marks, grading ----------
+    match /exams/{id} {
+      allow read: if isAdmin() || isTeacher()
+        || (isActiveUser() && resource.data.status == 'published');
+      allow write: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /marks/{id} {
+      // students/parents only see marks of published exams
+      function examPublished() {
+        return get(/databases/$(database)/documents/exams/$(resource.data.examId)).data.status == 'published';
+      }
+      allow read: if isAdmin() || isTeacher()
+        || (isStudent() && resource.data.studentId == myStudentId() && examPublished())
+        || (isParent() && resource.data.studentId in myChildIds() && examPublished());
+      // teachers may only create/update marks where they entered them and are assigned (validated client-side against assignments)
+      allow create: if (isAdmin() || isTeacher()) && request.resource.data.enteredBy == request.auth.uid;
+      allow update: if isAdmin() || (isTeacher() && resource.data.enteredBy == request.auth.uid);
+      allow delete: if false;
+    }
+
+    match /gradingScales/{id} {
+      allow read: if canReadCommon();
+      allow write: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /reportCards/{id} {
+      allow read: if isAdmin() || isTeacher()
+        || (isStudent() && resource.data.studentId == myStudentId())
+        || (isParent() && resource.data.studentId in myChildIds());
+      allow create, update: if isAdmin() || isTeacher();
+      allow delete: if false;
+    }
+
+    // ---------- templates ----------
+    match /templates/{id} {
+      allow read: if isAdmin() || (isAccountant() && resource.data.kind == 'receipt');
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---------- certificates ----------
+    match /certificates/{id} {
+      allow read: if isAdmin()
+        || (isStudent() && resource.data.studentId == myStudentId())
+        || (isParent() && resource.data.studentId in myChildIds());
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---------- notices ----------
+    match /notices/{id} {
+      function audienceIncludes() {
+        return resource.data.audience.type == 'all'
+          || (resource.data.audience.type == 'roles' && role() in resource.data.audience.value)
+          || (isParent() && resource.data.audience.type == 'classes' && myChildIds().size() > 0);
+      }
+      allow read: if (isAdmin() || isTeacher())
+        || (isActiveUser() && resource.data.status == 'live' && audienceIncludes());
+      allow create: if isAdmin() || isTeacher();
+      allow update: if isAdmin() || (isTeacher() && resource.data.createdBy == request.auth.uid);
+      allow delete: if false;
+    }
+
+    // ---------- notifications ----------
+    match /notifications/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isActiveUser(); // system-generated by client routines
+      allow update: if signedIn() && resource.data.userId == request.auth.uid; // mark-read
+      allow delete: if false;
+    }
+
+    // ---------- timetable ----------
+    match /timetable/{id} {
+      allow read: if canReadCommon() && notDeleted(resource.data);
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---------- leaves ----------
+    match /leaves/{id} {
+      allow read: if isAdmin() || isTeacher()
+        || (resource.data.personType == 'student' && (resource.data.personId == myStudentId() || resource.data.personId in myChildIds()))
+        || (resource.data.personType == 'staff' && resource.data.personId == myStaffId());
+      allow create: if isActiveUser();
+      allow update: if isAdmin() || isTeacher(); // approve/reject with decidedBy
+      allow delete: if false;
+    }
+
+    // ---------- documents ----------
+    match /documents/{id} {
+      allow read: if isAdmin()
+        || (resource.data.ownerType == 'student' && (resource.data.ownerId == myStudentId() || resource.data.ownerId in myChildIds()))
+        || (resource.data.ownerType == 'staff' && resource.data.ownerId == myStaffId());
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---------- PTM ----------
+    match /ptms/{id} {
+      allow read: if isActiveUser();
+      allow create, update: if isAdmin() || isTeacher();
+      // parents book their own slot through a targeted update (validated client-side)
+      allow update: if isParent();
+      allow delete: if false;
+    }
+
+    // ---------- messages ----------
+    match /messages/{id} {
+      function inThread() {
+        return request.auth.uid in resource.data.threadId.split('_');
+      }
+      allow read: if (isAdmin()) || ((isParent() || isTeacher()) && inThread());
+      allow create: if (isParent() || isTeacher()) && request.resource.data.senderId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // ---------- calendar ----------
+    match /calendarEvents/{id} {
+      allow read: if canReadCommon() && notDeleted(resource.data);
+      allow write: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---------- settings ----------
+    match /settings/{doc} {
+      allow read: if canReadCommon();
+      allow write: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---------- runHistory (generate-on-open idempotency) ----------
+    match /runHistory/{key} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser(); // idempotency gate: first create wins
+      allow update, delete: if false;
+    }
+
+    // ---------- default deny ----------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

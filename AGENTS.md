@@ -39,6 +39,7 @@ Netlify hosts the static build; Firestore Security Rules are the authorization l
 | `pnpm preview` | Serve the production build locally |
 | `pnpm lint` | ESLint (flat config) |
 | `pnpm typecheck` | `tsc --noEmit` strict pass |
+| `pnpm test` | Run all CRUD suites (sessions, classes, subjects, students, staff, teachers, templates, integration). Prints pass/fail summary, exits 1 on failure. Pure in-memory, no Firebase/DOM needed. |
 | `pnpm db:seed` | Seed the real Firebase project with demo school data (needs service account) |
 | `pnpm db:reset` | Wipe all collections (interactive confirm) |
 | `pnpm users:create` | Create Auth user + users doc: `--email --password --name --role` |

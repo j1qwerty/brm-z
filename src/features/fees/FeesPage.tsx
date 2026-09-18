@@ -413,7 +413,6 @@ function InvoicesTab({ students, classes }: { students: StudentDoc[]; classes: C
           setWaiveTarget(null)
         }}
       />
-      void create
     </div>
   )
 }

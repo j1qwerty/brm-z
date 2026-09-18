@@ -228,7 +228,7 @@ function Designer({
   return (
     <SheetRoot open onOpenChange={(o) => !o && onClose()}>
       <SheetContent
-        wide
+        xwide
         title={`Designer · ${template.name}`}
         description="Drag elements on the canvas, resize with the handles, reorder layers on the left, save when done. The default template per kind drives PDFs."
       >

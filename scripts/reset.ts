@@ -6,7 +6,7 @@ import 'dotenv/config'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline'
-import * as admin from 'firebase-admin'
+import admin from 'firebase-admin'
 
 const serviceAccountPath = resolve(process.env.SERVICE_ACCOUNT_PATH ?? './scripts/service-account.json')
 if (!existsSync(serviceAccountPath)) {

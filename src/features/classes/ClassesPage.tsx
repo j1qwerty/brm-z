@@ -121,14 +121,21 @@ function SubjectSheet({
   })
 
   const submit = async (v: SubjectForm) => {
-    if (existing) {
-      await update.mutateAsync({ id: existing.id, data: v })
-      toast.success('Subject updated')
-    } else {
-      await create.mutateAsync({ data: { ...v, classId }, id: v.code.toLowerCase().replace(/[^a-z0-9]/g, '') || undefined })
-      toast.success('Subject added')
+    try {
+      if (existing) {
+        await update.mutateAsync({ id: existing.id, data: v })
+        toast.success('Subject updated')
+      } else {
+        // Auto-generate the doc id (don't use the code as id, because re-creating
+        // a deleted subject with the same code would otherwise throw
+        // "Document already exists" and the form would silently hang).
+        await create.mutateAsync({ data: { ...v, classId } })
+        toast.success('Subject added')
+      }
+      onOpenChange(false)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save subject')
     }
-    onOpenChange(false)
   }
 
   return (
@@ -156,7 +163,9 @@ function SubjectSheet({
             <span>Elective<span className="block text-xs text-muted-foreground">Electives are optional on report cards</span></span>
             <Switch checked={form.watch('isElective')} onCheckedChange={(c) => form.setValue('isElective', c)} />
           </label>
-          <Button type="submit" className="w-full">{existing ? 'Save' : 'Add subject'}</Button>
+          <Button type="submit" className="w-full" disabled={create.isPending || update.isPending}>
+            {existing ? 'Save' : 'Add subject'}
+          </Button>
         </form>
       </SheetContent>
     </SheetRoot>

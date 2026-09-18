@@ -155,14 +155,18 @@ function StaffSheet({
 
   const submit = async (v: StaffForm) => {
     const payload = { ...v, staffType, photoUrl, joinDate: v.joinDate || todayStr() }
-    if (existing) {
-      await update.mutateAsync({ id: existing.id, data: payload })
-      toast.success('Record updated')
-    } else {
-      await create.mutateAsync({ data: { ...payload, status: 'active' } })
-      toast.success(staffType === 'teaching' ? 'Teacher added' : 'Staff member added')
+    try {
+      if (existing) {
+        await update.mutateAsync({ id: existing.id, data: payload })
+        toast.success('Record updated')
+      } else {
+        await create.mutateAsync({ data: { ...payload, status: 'active' } })
+        toast.success(staffType === 'teaching' ? 'Teacher added' : 'Staff member added')
+      }
+      onOpenChange(false)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save record')
     }
-    onOpenChange(false)
   }
 
   return (
@@ -210,7 +214,9 @@ function StaffSheet({
             <Label>Address</Label>
             <Textarea rows={2} {...form.register('address')} />
           </div>
-          <Button type="submit" className="w-full">{existing ? 'Save changes' : 'Add record'}</Button>
+          <Button type="submit" className="w-full" disabled={create.isPending || update.isPending}>
+            {existing ? 'Save changes' : 'Add record'}
+          </Button>
         </form>
       </SheetContent>
     </SheetRoot>

@@ -64,11 +64,15 @@ export function SheetContent({
   title,
   description,
   wide,
+  xwide,
+  className,
 }: {
   children: ReactNode
   title: ReactNode
   description?: ReactNode
   wide?: boolean
+  xwide?: boolean
+  className?: string
 }) {
   return (
     <DialogPrimitive.Portal>
@@ -76,7 +80,8 @@ export function SheetContent({
       <DialogPrimitive.Content
         className={cn(
           'fixed right-0 top-0 z-50 flex h-dvh w-full flex-col gap-4 overflow-y-auto border-l border-border bg-card p-6 shadow-lg duration-200',
-          wide ? 'sm:max-w-2xl' : 'sm:max-w-md',
+          xwide ? 'sm:max-w-[95vw] lg:max-w-[1400px]' : wide ? 'sm:max-w-2xl' : 'sm:max-w-md',
+          className,
         )}
       >
         <div className="flex items-start justify-between gap-4">

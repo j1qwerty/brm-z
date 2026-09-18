@@ -15,6 +15,7 @@ import type { GradeBand, GradingScaleDoc, SchoolSettingsDoc, SessionDoc } from '
 function SchoolProfileTab() {
   const { data: settings, isLoading } = useGet<SchoolSettingsDoc>('settings', 'school')
   const update = useUpdate('settings')
+  const create = useCreate('settings')
   const [form, setForm] = useState<Partial<SchoolSettingsDoc>>({})
 
   useEffect(() => {
@@ -24,11 +25,24 @@ function SchoolProfileTab() {
   const set = (k: keyof SchoolSettingsDoc, v: string | undefined) => setForm((f) => ({ ...f, [k]: v }))
 
   const save = async () => {
-    await update.mutateAsync({ id: 'school', data: { ...form, id: 'school', updatedAt: Date.now() } })
-    toast.success('School profile saved', { description: 'Used across templates, report cards and certificates.' })
+    if (!form.name?.trim()) {
+      toast.error('School name is required')
+      return
+    }
+    try {
+      if (settings) {
+        await update.mutateAsync({ id: 'school', data: { ...form, id: 'school', updatedAt: Date.now() } })
+        toast.success('School profile saved', { description: 'Used across templates, report cards and certificates.' })
+      } else {
+        await create.mutateAsync({ id: 'school', data: { ...form, id: 'school' } })
+        toast.success('School profile created', { description: 'Used across templates, report cards and certificates.' })
+      }
+    } catch (e) {
+      toast.error('Could not save the school profile', { description: e instanceof Error ? e.message : String(e) })
+    }
   }
 
-  if (isLoading || !settings) return null
+  if (isLoading) return <p className="text-sm text-muted-foreground">Loading school profile…</p>
 
   const fields: [keyof SchoolSettingsDoc, string, string?][] = [
     ['name', 'School name'],
@@ -41,11 +55,16 @@ function SchoolProfileTab() {
 
   return (
     <div className="max-w-2xl space-y-4">
+      {!settings && (
+        <p className="text-sm text-muted-foreground">
+          No school profile yet. Fill in the details below and create it — it feeds every PDF, ID card and certificate.
+        </p>
+      )}
       <ImageUrlField value={form.logoUrl ?? ''} onChange={(v) => set('logoUrl', v)} label="School logo (external URL)" hint="Shown on ID cards, receipts and report cards. A square PNG works best." />
       <div className="grid gap-3 sm:grid-cols-2">
         {fields.map(([k, label, placeholder]) => (
           <div key={String(k)} className="space-y-1.5">
-            <Label>{label}</Label>
+            <Label>{label}{k === 'name' ? ' *' : ''}</Label>
             <Input value={String(form[k] ?? '')} placeholder={placeholder} onChange={(e) => set(k, e.target.value)} />
           </div>
         ))}
@@ -58,7 +77,9 @@ function SchoolProfileTab() {
         <Label>City / State / PIN</Label>
         <Input value={String(form.city ?? '')} onChange={(e) => set('city', e.target.value)} placeholder="Hyderabad, Telangana 500007" />
       </div>
-      <Button className="gap-1.5" onClick={save}><Save className="size-4" /> Save profile</Button>
+      <Button className="gap-1.5" onClick={save} disabled={update.isPending || create.isPending}>
+        <Save className="size-4" /> {settings ? 'Save profile' : 'Create profile'}
+      </Button>
     </div>
   )
 }

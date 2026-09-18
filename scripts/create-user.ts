@@ -5,7 +5,7 @@
 import 'dotenv/config'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import * as admin from 'firebase-admin'
+import admin from 'firebase-admin'
 
 const args = Object.fromEntries(
   process.argv.slice(2).filter((a) => a.startsWith('--')).map((a) => {

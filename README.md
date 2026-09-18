@@ -71,6 +71,9 @@ firebase-admin + tsx + dotenv (local scripts only).
 | `pnpm preview` | Serve the production build |
 | `pnpm lint` | ESLint |
 | `pnpm typecheck` | Strict TypeScript check |
+| `pnpm test` | run tests (fast, in-memory — no Firebase, no network) |
+| `pnpm test:live` | REAL tests against real Firestore: 2 sessions, Classes 1-10 (A+B), 60 students, parents, attendance, timetable, fees, exams/marks — all ids prefixed `tst-` (needs service account key) |
+| `pnpm test-reset` | Delete ONLY `tst-` test docs from real Firestore (real school data untouched) |
 | `pnpm db:seed` | Seed real Firebase with demo school data (needs service account key) |
 | `pnpm db:reset` | Wipe all collections (asks you to type DELETE) |
 | `pnpm users:create` | Create a user + role directly: `-- --email a@b.in --password x --name "Name" --role admin` |
@@ -173,6 +176,34 @@ Point the app at emulators by adding to `.env.local`:
 `VITE_USE_EMULATORS=true` is not wired by default; to develop against emulators temporarily
 edit `src/lib/firebase.ts` per the Firebase docs (`connectAuthEmulator`,
 `connectFirestoreEmulator`).
+
+## Testing
+
+Two layers — fast logic tests plus real Firestore tests:
+
+```bash
+pnpm test          # 47 in-memory CRUD checks (sessions, classes/subjects, students,
+                   # staff, templates, integration). Pure Node, no Firebase, ~60ms.
+pnpm test:live     # REAL Firestore test: writes ~200 docs (2 sessions, Classes 1-10
+                   # with sections A+B, 4 subjects/class, 8 staff, 60 students,
+                   # 12 parents, assignments, fees/invoices/payments, attendance,
+                   # leaves, timetable, exams/marks/report cards, templates,
+                   # certificates, notices, PTM, messages, calendar) with
+                   # create → read → edit → soft-delete → restore checks per module.
+pnpm test-reset    # deletes ONLY the live-test docs (every live-test id starts
+                   # with `tst-`, so real school data is never touched).
+                   # Use `pnpm test-reset -- --yes` to skip the confirmation prompt.
+```
+
+Notes:
+
+- `pnpm test` runs in 0-1ms per check because it is an in-memory provider mirroring
+  the app's data layer — it catches CRUD/soft-delete logic bugs, not network/rules issues.
+- `pnpm test:live` hits the network (expect 30-90s) and needs the same service-account
+  setup as `pnpm db:seed` (README step 5). It uses `set(merge)` with fixed `tst-` ids,
+  so re-runs are idempotent.
+- `pnpm test:live` uses firebase-admin, which bypasses Security Rules (same as seeding).
+  Rule enforcement itself is covered by `pnpm rules:test` on the emulator.
 
 ## Theme customization
 

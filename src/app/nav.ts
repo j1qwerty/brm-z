@@ -40,6 +40,7 @@ export const NAV: NavSection[] = [
   {
     title: 'People',
     items: [
+      { to: '/people?tab=students', label: 'Students', icon: GraduationCap, capability: 'people.read', keywords: 'admission roll no csv bulk import' },
       { to: '/people', label: 'People', icon: Users, capability: 'people.read', keywords: 'students teachers staff parents' },
       { to: '/users', label: 'User Accounts', icon: UserCog, capability: 'users.manage', keywords: 'approve roles suspend' },
       { to: '/leaves', label: 'Leaves', icon: CalendarOff, capability: 'reports.view', keywords: 'apply approve sick casual' },

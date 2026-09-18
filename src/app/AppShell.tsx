@@ -33,7 +33,19 @@ function useActiveSession(): SessionDoc | null | undefined {
 function Sidebar() {
   const { user } = useAuth()
   const { sidebarOpen, setSidebarOpen } = useAppStore()
+  const loc = useLocation()
   const sections = navForRole(user?.role)
+
+  const isItemActive = (item: { to: string }) => {
+    // Items that target a specific tab via ?tab= only highlight when that tab is active.
+    const tabMatch = item.to.match(/\?tab=([^&]+)/)
+    if (tabMatch) {
+      const expectedTab = tabMatch[1]
+      const currentTab = new URLSearchParams(loc.search).get('tab')
+      return loc.pathname === item.to.split('?')[0] && currentTab === expectedTab
+    }
+    return loc.pathname === item.to
+  }
 
   return (
     <>
@@ -70,10 +82,10 @@ function Sidebar() {
                   key={item.to}
                   to={item.to}
                   onClick={() => setSidebarOpen(false)}
-                  className={({ isActive }) =>
+                  className={() =>
                     cn(
                       'mb-0.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-sidebar-foreground transition-colors',
-                      isActive
+                      isItemActive(item)
                         ? 'bg-sidebar-accent text-accent-foreground'
                         : 'hover:bg-muted',
                     )

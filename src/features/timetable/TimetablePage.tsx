@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, Printer } from 'lucide-react'
 import { PageHeader, InfoTip } from '@/components/shared/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, Skeleton } from '@/components/ui/display'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useList } from '@/lib/data/hooks'
 import { useSessionScope } from '@/app/AppShell'
 import { useAuth } from '@/lib/auth'
@@ -17,6 +17,18 @@ import { elementToPdf } from '@/lib/pdf'
 interface SlotDraft {
   subjectId: string
   teacherId: string
+}
+
+/** One teaching staff member as seen from the period being edited. */
+interface TeacherRow {
+  id: string
+  name: string
+  /** Assigned to the subject currently picked in the modal (any class). */
+  teachesSubject: boolean
+  /** Assigned to the subject currently picked in the modal for this very class. */
+  assignedHere: boolean
+  /** What the teacher already has at this day+period, if anything. */
+  busy?: { subjectLabel: string; classLabel: string }
 }
 
 function TimetableGrid({
@@ -158,14 +170,66 @@ export default function TimetablePage() {
   const conflictFor = (day: number, periodNo: number, teacher: string, excludeId?: string) =>
     (slots ?? []).find((s) => s.day === day && s.periodNo === periodNo && s.teacherId === teacher && s.id !== excludeId)
 
+  const subjectLabel = useCallback((id: string) => subjects?.find((s) => s.id === id)?.name ?? id, [subjects])
+  const classLabel = useCallback((slot: TimetableSlotDoc) => `${classes?.find((c) => c.id === slot.classId)?.name ?? slot.classId}-${slot.section}`, [classes])
+
+  // Teacher dropdown, ordered by how good the pick is for the period being edited:
+  // free teachers first, then whoever is already booked (annotated with what they have).
+  // With a subject picked, teachers of that subject float to the top of the free list.
+  const teacherRows = useMemo<TeacherRow[]>(() => {
+    if (!cellEdit) return []
+    const pick = draft.subjectId
+    const rows: TeacherRow[] = (staff ?? [])
+      .filter((s) => s.staffType === 'teaching')
+      .map((s) => {
+        const clash = (slots ?? []).find(
+          (sl) => sl.day === cellEdit.day && sl.periodNo === cellEdit.periodNo && sl.teacherId === s.id && sl.id !== cellEdit.existing?.id,
+        )
+        const assigned = pick ? (assignments ?? []).filter((a) => a.teacherId === s.id && a.subjectId === pick) : []
+        return {
+          id: s.id,
+          name: s.name,
+          teachesSubject: assigned.length > 0,
+          assignedHere: assigned.some((a) => a.classId === cls?.id),
+          busy: clash ? { subjectLabel: subjectLabel(clash.subjectId), classLabel: classLabel(clash) } : undefined,
+        }
+      })
+    const byName = (a: TeacherRow, b: TeacherRow) => a.name.localeCompare(b.name)
+    return rows.sort(
+      (a, b) =>
+        Number(Boolean(a.busy)) - Number(Boolean(b.busy)) ||
+        Number(b.teachesSubject) - Number(a.teachesSubject) ||
+        Number(Boolean(a.assignedHere)) - Number(Boolean(b.assignedHere)) ||
+        byName(a, b),
+    )
+  }, [cellEdit, draft.subjectId, staff, slots, assignments, cls?.id, subjectLabel, classLabel])
+
+  const freeTeachers = useMemo(() => teacherRows.filter((t) => !t.busy), [teacherRows])
+  const busyTeachers = useMemo(() => teacherRows.filter((t) => t.busy), [teacherRows])
+  const teacherGroups = useMemo(() => {
+    if (!cellEdit) return []
+    const slot = `${WEEKDAYS[cellEdit.day - 1]} · P${cellEdit.periodNo}`
+    const subject = draft.subjectId ? subjectLabel(draft.subjectId) : ''
+    const groups: { label: string; rows: TeacherRow[] }[] = []
+    const subjectFree = freeTeachers.filter((t) => t.teachesSubject)
+    if (subjectFree.length) groups.push({ label: `Free · teaches ${subject}`, rows: subjectFree })
+    const others = freeTeachers.filter((t) => !t.teachesSubject)
+    if (others.length) {
+      groups.push({ label: subject ? `Free · other subjects (${others.length})` : `Free at ${slot} (${others.length})`, rows: others })
+    }
+    if (busyTeachers.length) groups.push({ label: `Busy · already booked at ${slot}`, rows: busyTeachers })
+    return groups
+  }, [freeTeachers, busyTeachers, cellEdit, draft.subjectId, subjectLabel])
+
+  const selectedTeacherName = teacherRows.find((t) => t.id === draft.teacherId)?.name
+
   const saveSlot = async () => {
     if (!cellEdit || !cls || !draft.subjectId || !draft.teacherId) return
     const conflict = conflictFor(cellEdit.day, cellEdit.periodNo, draft.teacherId, cellEdit.existing?.id)
     if (conflict) {
       const t = staff?.find((s) => s.id === draft.teacherId)
-      const cc = classes?.find((c) => c.id === conflict.classId)
       toast.error('Teacher double-booked', {
-        description: `${t?.name ?? 'Teacher'} already has ${conflict.subjectId} with ${cc?.name ?? conflict.classId}-${conflict.section} at P${conflict.periodNo} ${WEEKDAYS[conflict.day - 1]}.`,
+        description: `${t?.name ?? 'Teacher'} already has ${subjectLabel(conflict.subjectId)} with ${classLabel(conflict)} at P${conflict.periodNo} ${WEEKDAYS[conflict.day - 1]}.`,
       })
       return
     }
@@ -311,11 +375,11 @@ export default function TimetablePage() {
       {/* cell editor */}
       {cellEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" onClick={() => setCellEdit(null)}>
-          <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <CardContent className="space-y-4 p-5">
               <div className="flex items-center justify-between">
                 <p className="font-semibold">{WEEKDAYS[cellEdit.day - 1]} · Period {cellEdit.periodNo}</p>
-                <InfoTip title="Conflict check">When you save, the app verifies this teacher is not already scheduled in another section for the same period.</InfoTip>
+                <InfoTip title="Conflict check">Teachers free at this day+period are listed first, then those already booked (shown with the subject and class they have). Pick a subject and the teachers who teach it float to the top. Saving a busy teacher is blocked.</InfoTip>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground">Subject</label>
@@ -327,18 +391,37 @@ export default function TimetablePage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Teacher</label>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Teacher
+                  <span className="ml-1 font-normal text-muted-foreground/70">
+                    · {freeTeachers.length} free · {busyTeachers.length} busy
+                  </span>
+                </label>
                 <Select value={draft.teacherId} onValueChange={(v) => setDraft((d) => ({ ...d, teacherId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Pick teacher" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Pick teacher">{selectedTeacherName}</SelectValue></SelectTrigger>
                   <SelectContent>
-                    {(assignments ?? [])
-                      .filter((a) => a.classId === cls?.id && a.subjectId === draft.subjectId && a.teacherId)
-                      .map((a) => {
-                        const t = staff?.find((s) => s.id === a.teacherId)
-                        return <SelectItem key={a.teacherId} value={a.teacherId}>{t?.name ?? a.teacherId} (assigned)</SelectItem>
-                      })}
-                    {(staff ?? []).filter((s) => s.staffType === 'teaching').map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    {teacherGroups.length === 0 && (
+                      <SelectItem value="__none__" disabled>No teaching staff found</SelectItem>
+                    )}
+                    {teacherGroups.map((g) => (
+                      <SelectGroup key={g.label}>
+                        <SelectLabel>{g.label}</SelectLabel>
+                        {g.rows.map((t) => (
+                          <SelectItem key={t.id} value={t.id} textValue={t.name}>
+                            <span className="flex w-full items-center justify-between gap-3">
+                              <span className="truncate">
+                                {t.name}
+                                {t.assignedHere && <span className="ml-1.5 text-[11px] text-primary">(assigned)</span>}
+                              </span>
+                              {t.busy && (
+                                <span className="shrink-0 truncate text-[11px] text-muted-foreground">
+                                  {t.busy.subjectLabel} · {t.busy.classLabel}
+                                </span>
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
                     ))}
                   </SelectContent>
                 </Select>

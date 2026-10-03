@@ -24,11 +24,13 @@ import { join } from 'node:path'
 // the built renderer sit next to it.
 const __dirname_ = __dirname
 /**
- * DEV loads the Vite server (hot reload). `BMRC_DESKTOP_DIST=1` forces the
- * built app instead, which is how the `file://` / hash-router path gets tested
- * without packaging a full installer.
+ * DEV loads the Vite server (hot reload).
+ *
+ * `electron . --dist` (or BMRC_DESKTOP_DIST=1) forces the built app instead: it
+ * loads dist/ over file://, which is how the packaged path — CSP, hash routing,
+ * WASM, relative asset URLs — gets tested without building a full installer.
  */
-const FORCE_DIST = process.env.BMRC_DESKTOP_DIST === '1'
+const FORCE_DIST = process.argv.includes('--dist') || process.env.BMRC_DESKTOP_DIST === '1'
 const DEV = !app.isPackaged && !FORCE_DIST
 const VITE_URL = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5121'
 // In a packaged app main.cjs sits at the app root, so the renderer is ./dist.
@@ -109,7 +111,12 @@ function csp(): string {
     for (const match of html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
       const code = match[1]
       if (!code.trim()) continue
-      hashes.push(`'sha256-${createHash('sha256').update(code, 'utf8').digest('base64')}'`)
+      // The HTML parser normalises CRLF/CR to LF before the script is executed,
+      // and that normalised text is what gets hashed. Hashing the raw bytes of a
+      // CRLF file produces a hash the browser will never match, which silently
+      // blocks the script.
+      const normalised = code.replace(/\r\n?/g, '\n')
+      hashes.push(`'sha256-${createHash('sha256').update(normalised, 'utf8').digest('base64')}'`)
     }
   } catch (err) {
     console.error('[csp] could not read index.html for inline hashes:', err)

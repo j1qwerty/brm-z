@@ -132,6 +132,10 @@ and ask the owner to confirm before moving on. Never silently skip a step.
 - **Desktop CSP blocks WebAssembly:** `script-src` must keep `'wasm-unsafe-eval'`
   (sql.js), never `'unsafe-eval'`. Inline scripts in `dist/index.html` are hashed
   automatically by `csp()` in `electron/main.ts`.
+- **"Inline script violates Content Security Policy" in the desktop app:** the hash
+  was computed from raw bytes. The HTML parser normalises CRLF/CR to LF *before*
+  executing, so `csp()` must hash the LF-normalised text — a CRLF checkout of
+  `index.html` otherwise produces a hash the browser will never match.
 - **Blank tray icon:** `pnpm icons` regenerates `build/tray.png`, which
   `electron:build` copies into `dist-electron/` and electron-builder ships as an
   `extraResources` entry.

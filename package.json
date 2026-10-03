@@ -16,7 +16,7 @@
     "icons": "node scripts/make-icons.mjs",
     "electron:build": "node scripts/electron-build.mjs",
     "electron:dev": "node scripts/electron-build.mjs && concurrently -k -n vite,electron -c cyan,magenta \"pnpm dev\" \"electron .\"",
-    "electron:start": "pnpm build && pnpm electron:build && electron .",
+    "electron:start": "pnpm build && pnpm icons && pnpm electron:build && electron . --dist",
     "electron:dist": "pnpm build && pnpm icons && pnpm electron:build && electron-builder --win --publish never",
     "electron:dist:dir": "pnpm build && pnpm icons && pnpm electron:build && electron-builder --win --dir --publish never",
     "lint": "eslint .",

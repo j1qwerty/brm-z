@@ -71,9 +71,11 @@ firebase-admin + tsx + dotenv (local scripts only).
 | `pnpm preview` | Serve the production build |
 | `pnpm icons` | Regenerate the app/installer/tray icons from `public/favicon.svg` |
 | `pnpm electron:dev` | Run the **desktop app** (Electron) with hot reload: Vite + Electron together |
-| `pnpm electron:start` | Run the desktop app against the **production** build (no hot reload) |
+| `pnpm electron:start` | Build, then run the desktop app against the **production** build |
 | `pnpm electron:dist` | Package a Windows installer (NSIS) into `release/` |
 | `pnpm electron:dist:dir` | Unpacked Windows build in `release/` (faster, for testing) |
+
+See [Desktop app (Electron)](#desktop-app-electron) for the full build and packaging guide.
 | `pnpm lint` | ESLint |
 | `pnpm typecheck` | Strict TypeScript check |
 | `pnpm test` | run tests (fast, in-memory — no Firebase, no network) |
@@ -166,11 +168,58 @@ the failed step only. See `sync.md` for the full design.
 The same app ships as a Windows desktop application: a real native shell around the
 production build, not a separate codebase.
 
+### Building the desktop app
+
 ```bash
-pnpm electron:dev      # dev: Vite + Electron, hot reload, devtools open
-pnpm electron:start    # production build inside the shell
-pnpm electron:dist     # -> release/BRM-School-Setup-1.0.0.exe
+# One-time: the Electron binary is downloaded on first install (~100 MB).
+pnpm install
+
+# Fastest loop while working on the app itself.
+pnpm electron:dev      # Vite + Electron together, hot reload, devtools open
+
+# Package a real installer.
+pnpm electron:dist     # -> release/BRM-School-Setup-1.0.0.exe  (NSIS, per-user install)
+
+# Just run the app the way a user would, without installing anything.
+pnpm electron:start    # builds dist/, then runs it in the shell over file://
+
+# Unpacked build — faster than the installer, good for checking packaging issues.
+pnpm electron:dist:dir # -> release/win-unpacked/BRM School Management.exe
 ```
+
+| Command | What it does |
+| --- | --- |
+| `pnpm electron:dev` | Vite dev server + Electron with hot reload; devtools open automatically |
+| `pnpm electron:build` | Bundle `electron/main.ts` + `preload.ts` to `dist-electron/*.cjs` (run automatically by the commands above) |
+| `pnpm electron:start` | Build, then run the **production** build in the shell (loads `dist/` over `file://`) |
+| `pnpm electron:dist` | `pnpm build` + `pnpm icons` + electron-builder → Windows installer in `release/` |
+| `pnpm electron:dist:dir` | Same, unpacked — no installer, just `release/win-unpacked/` |
+| `pnpm icons` | Rasterise `public/favicon.svg` → `build/icon.ico`, `build/icon.png`, `build/tray.png` |
+
+`electron:dist` runs `pnpm icons` for you, so you only need it by hand after editing
+`public/favicon.svg`.
+
+**Reproducing an installer-only bug without packaging:**
+
+```bash
+pnpm build
+npx electron . --dist        # skips the dev server, loads dist/ over file://
+```
+
+This loads `dist/` exactly like the packaged app — same CSP, same hash routing, same
+relative asset URLs — which is where `ERR_FILE_NOT_FOUND` and WebAssembly/CSP problems
+show up. `BMRC_DESKTOP_DIST=1` does the same thing if you prefer an env var.
+
+**Installer notes**
+
+- Built **unsigned**. Windows SmartScreen will warn on first run ("more info → run
+  anyway"). Code signing needs a certificate you own — none is committed here.
+- Installs per-user (no admin rights), with optional Start-menu and desktop
+  shortcuts, and lets the user pick the install folder.
+- Only `dist/`, `dist-electron/` and `package.json` are packaged: no `node_modules`,
+  scripts, or service-account keys.
+- Upgrading = installing the new version over the old one. The local database lives
+  in `%APPDATA%` and is **not** touched by an upgrade.
 
 **What the shell adds**
 
@@ -195,10 +244,11 @@ API (`electron/preload.ts`) as the only surface, and a Content-Security-Policy o
 packaged build that hashes the inline theme script and allows WebAssembly (sql.js)
 via `'wasm-unsafe-eval'` rather than `'unsafe-eval'`.
 
-**Notes for the packaged build**: routing switches to hash history automatically,
-because the app is loaded over `file://` where path-based URLs cannot be resolved;
-Vite's `base` is relative for the same reason. `BMRC_DESKTOP_DIST=1 electron .` runs the
-built app without packaging, which is the quickest way to reproduce an installer bug.
+**Two build-mode differences worth knowing** (both automatic):
+
+- Routing switches to **hash history**, because the app is loaded over `file://` where
+  path-based URLs cannot be resolved. Deep links look like `#/fees?tab=payments`.
+- Vite's `base` is **relative**, for the same reason.
 
 ### Roles & what each can see
 

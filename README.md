@@ -220,10 +220,31 @@ no admin rights needed — with optional Start-menu and desktop shortcuts.
 current code and a freshly rasterised icon. Run `pnpm icons` by hand only after editing
 `public/favicon.svg`.
 
+Verified sizes: the app code (`app.asar`) is **4.3 MB**; the installer is **~107 MB**,
+almost all of which is the bundled Chromium/Electron runtime. `node_modules` is
+deliberately excluded — both entry points are pre-bundled (Vite for the renderer including
+sql.js and its `.wasm`, esbuild for main + preload), so nothing is resolved from disk at
+runtime. Shipping it added ~291 MB for no benefit.
+
+**Building somewhere other than `release/`**
+
+If `release/` is locked (see the Defender note below) you can send the output anywhere:
+
+```bash
+pnpm build && pnpm icons && pnpm electron:build
+npx electron-builder --win --publish never --config.directories.output=D:/temp/brm-installer
+# -> D:\temp\brm-installer\BRM-School-Setup-1.0.0.exe
+# -> D:\temp\brm-installer\win-unpacked\BRM School Management.exe   (run this to test)
+```
+
+Note the long `--config.` form — `-c.` is read as `--config` (a file path) and fails with
+`ENOENT`.
+
 **⚠️ If the build fails with `EPERM ... rename 'release/win-unpacked.tmp'`**
 
 Windows Defender locks the freshly extracted Electron files (~300 MB) and electron-builder
-cannot rename its temp folder. Run this once in an **elevated** PowerShell, then retry:
+cannot rename its temp folder. Either use the alternate output path above, or run this
+once in an **elevated** PowerShell and then retry:
 
 ```powershell
 Add-MpPreference -ExclusionPath "<your-repo-path>\release"

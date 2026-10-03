@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, Printer } from 'lucide-react'
+import { AlertTriangle, Ban, CheckCircle2, Printer } from 'lucide-react'
 import { PageHeader, InfoTip } from '@/components/shared/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, Skeleton } from '@/components/ui/display'
@@ -210,14 +210,14 @@ export default function TimetablePage() {
     if (!cellEdit) return []
     const slot = `${WEEKDAYS[cellEdit.day - 1]} · P${cellEdit.periodNo}`
     const subject = draft.subjectId ? subjectLabel(draft.subjectId) : ''
-    const groups: { label: string; rows: TeacherRow[] }[] = []
+    const groups: { label: string; tone: 'success' | 'danger'; rows: TeacherRow[] }[] = []
     const subjectFree = freeTeachers.filter((t) => t.teachesSubject)
-    if (subjectFree.length) groups.push({ label: `Free · teaches ${subject}`, rows: subjectFree })
+    if (subjectFree.length) groups.push({ label: `Free · teaches ${subject}`, tone: 'success', rows: subjectFree })
     const others = freeTeachers.filter((t) => !t.teachesSubject)
     if (others.length) {
-      groups.push({ label: subject ? `Free · other subjects (${others.length})` : `Free at ${slot} (${others.length})`, rows: others })
+      groups.push({ label: subject ? `Free · other subjects (${others.length})` : `Free at ${slot} (${others.length})`, tone: 'success', rows: others })
     }
-    if (busyTeachers.length) groups.push({ label: `Busy · already booked at ${slot}`, rows: busyTeachers })
+    if (busyTeachers.length) groups.push({ label: `Busy · already booked at ${slot}`, tone: 'danger', rows: busyTeachers })
     return groups
   }, [freeTeachers, busyTeachers, cellEdit, draft.subjectId, subjectLabel])
 
@@ -386,15 +386,24 @@ export default function TimetablePage() {
                 <Select value={draft.subjectId} onValueChange={(v) => setDraft((d) => ({ ...d, subjectId: v }))}>
                   <SelectTrigger><SelectValue placeholder="Pick subject" /></SelectTrigger>
                   <SelectContent>
-                    {(subjects ?? []).map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                    {subjects && subjects.length > 0 ? (
+                      subjects.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
+                    ) : (
+                      // Never render a silently empty dropdown: say whether it is still
+                      // loading or the class genuinely has no subjects yet.
+                      <SelectItem value="__none__" disabled>
+                        {subjects ? 'No subjects in this class yet' : 'Loading subjects…'}
+                      </SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground">
                   Teacher
-                  <span className="ml-1 font-normal text-muted-foreground/70">
-                    · {freeTeachers.length} free · {busyTeachers.length} busy
+                  <span className="ml-1 font-normal">
+                    <span className="text-success">· {freeTeachers.length} free</span>
+                    <span className="text-danger"> · {busyTeachers.length} busy</span>
                   </span>
                 </label>
                 <Select value={draft.teacherId} onValueChange={(v) => setDraft((d) => ({ ...d, teacherId: v }))}>
@@ -405,16 +414,19 @@ export default function TimetablePage() {
                     )}
                     {teacherGroups.map((g) => (
                       <SelectGroup key={g.label}>
-                        <SelectLabel>{g.label}</SelectLabel>
+                        <SelectLabel className={g.tone === 'success' ? 'text-success' : 'text-danger'}>{g.label}</SelectLabel>
                         {g.rows.map((t) => (
                           <SelectItem key={t.id} value={t.id} textValue={t.name}>
-                            <span className="flex w-full items-center justify-between gap-3">
-                              <span className="truncate">
-                                {t.name}
-                                {t.assignedHere && <span className="ml-1.5 text-[11px] text-primary">(assigned)</span>}
+                            <span className="flex w-full items-center justify-between gap-2">
+                              <span className="flex min-w-0 items-center gap-1.5">
+                                {t.busy
+                                  ? <Ban className="size-3.5 shrink-0 text-danger" />
+                                  : <CheckCircle2 className="size-3.5 shrink-0 text-success" />}
+                                <span className={cn('truncate', t.busy ? 'text-danger' : 'text-foreground')}>{t.name}</span>
+                                {t.assignedHere && <span className="shrink-0 text-[11px] text-primary">(assigned)</span>}
                               </span>
                               {t.busy && (
-                                <span className="shrink-0 truncate text-[11px] text-muted-foreground">
+                                <span className="shrink-0 truncate text-[11px] text-danger">
                                   {t.busy.subjectLabel} · {t.busy.classLabel}
                                 </span>
                               )}

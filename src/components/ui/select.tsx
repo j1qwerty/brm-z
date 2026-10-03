@@ -74,6 +74,6 @@ export const SelectItem = React.forwardRef<
 ))
 SelectItem.displayName = 'SelectItem'
 
-export function SelectLabel({ children }: { children: React.ReactNode }) {
-  return <SelectPrimitive.Label className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{children}</SelectPrimitive.Label>
+export function SelectLabel({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <SelectPrimitive.Label className={cn('px-2 py-1.5 text-xs font-medium text-muted-foreground', className)}>{children}</SelectPrimitive.Label>
 }

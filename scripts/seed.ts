@@ -46,7 +46,7 @@ async function main() {
   // settings
   await db.doc('settings/school').set({
     id: 'school',
-    name: 'BMRC Public School',
+    name: 'BRM International Public School',
     address: 'Plot 14, Vidya Nagar, Habsiguda',
     city: 'Hyderabad, Telangana 500007',
     affiliation: 'CBSE (Aff. 130456)',
@@ -118,7 +118,7 @@ async function main() {
   })
 
   // default templates (minimal layouts; design them in the app)
-  const logo = 'https://ui-avatars.com/api/?name=BMRC&background=0f766e&color=fff&size=128&bold=true'
+  const logo = 'https://ui-avatars.com/api/?name=BRM&background=0f766e&color=fff&size=128&bold=true'
   await upsert('templates', 'tpl-id-student', {
     kind: 'idcard-student', name: 'Student ID (default)', images: { logo, background: '', extra1: '' }, isDefault: true,
     layoutJson: { page: { w: 640, h: 400 }, elements: [

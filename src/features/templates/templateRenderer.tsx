@@ -16,7 +16,7 @@ export interface RenderData {
 const textValue = (type: TemplateDoc['layoutJson']['elements'][number]['type'], d: RenderData): string => {
   const s = d.student
   switch (type) {
-    case 'school': return d.school ?? 'BMRC Public School'
+    case 'school': return d.school ?? 'BRM International Public School'
     case 'name': return s?.name ?? d.certificate?.student ?? d.receipt?.student ?? d.staff?.name ?? 'Student Name'
     case 'class': return d.receipt ? d.receipt.cls : `${d.className ?? ''}${s ? `-${s.section}` : ''}` || 'Class - Section'
     case 'roll': return s?.rollNo ? `Roll No: ${s.rollNo}` : 'Roll No: 00'
@@ -24,7 +24,7 @@ const textValue = (type: TemplateDoc['layoutJson']['elements'][number]['type'], 
     case 'blood': return s?.bloodGroup ? `Blood: ${s.bloodGroup}` : 'Blood: O+'
     case 'phone': return s?.guardianPhone ?? s?.phone ?? d.staff?.phone ?? '+91 98480 00000'
     case 'address': return s?.address ?? d.staff?.address ?? 'Address, City'
-    case 'watermark': return d.watermarkText ?? 'BMRC'
+    case 'watermark': return d.watermarkText ?? 'BRM'
     default: return d.extraText ?? ''
   }
 }
@@ -53,7 +53,7 @@ export function TemplateElementBox({
 
   useEffect(() => {
     if (el.type === 'qr') {
-      const payload = data.student ? `BMRC:${data.student.admissionNo}` : data.receipt ? `RCP:${data.receipt.no}` : data.certificate ? `CERT:${data.certificate.serial}` : 'BMRC-ID'
+      const payload = data.student ? `BRM:${data.student.admissionNo}` : data.receipt ? `RCP:${data.receipt.no}` : data.certificate ? `CERT:${data.certificate.serial}` : 'BRM-ID'
       void qrDataUrl(payload, 160).then(setQr)
     }
   }, [el.type, data.student, data.receipt, data.certificate])

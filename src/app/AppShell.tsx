@@ -12,6 +12,7 @@ import { useList, useUpdate } from '@/lib/data/hooks'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSyncLifecycle } from '@/lib/sync/lifecycle'
 import { useSyncBadge } from '@/lib/sync/useSyncBadge'
+import { startDesktopBridge, updateDesktopTitle, updateDesktopUser } from '@/lib/desktopSync'
 import { runGenerateOnOpen } from '@/lib/generate-on-open'
 import { useGet } from '@/lib/data/hooks'
 import type { NotificationDoc, SessionDoc, SchoolSettingsDoc } from '@/lib/types'
@@ -67,7 +68,7 @@ function Sidebar() {
             <GraduationCap className="size-5" />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold leading-tight">BMRC</p>
+            <p className="truncate text-sm font-bold leading-tight">BRM</p>
             <p className="truncate text-xs text-muted-foreground">School Management</p>
           </div>
           <Button variant="ghost" size="iconSm" className="ml-auto lg:hidden" onClick={() => setSidebarOpen(false)}>
@@ -341,7 +342,8 @@ export function AppShell() {
   const { user } = useAuth()
   const loc = useLocation()
   const session = useActiveSession()
-  const { paletteOpen, setPaletteOpen } = useAppStore()
+  const navigate = useNavigate()
+  const { paletteOpen, setPaletteOpen, sidebarOpen, setSidebarOpen } = useAppStore()
   const { data: settings } = useGet<SchoolSettingsDoc>('settings', 'school')
   useSyncLifecycle()
 
@@ -356,6 +358,34 @@ export function AppShell() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [setPaletteOpen])
+
+  // Desktop shell (Electron): native menu/tray commands + window title.
+  useEffect(() => {
+    if (!user) return
+    const stop = startDesktopBridge({ userId: user.id, sessionName: session?.name })
+    updateDesktopUser(user)
+    return stop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, session?.name])
+
+  useEffect(() => {
+    updateDesktopTitle(session?.name)
+  }, [session?.name])
+
+  // Navigation requests coming from the native menu.
+  useEffect(() => {
+    const onNavigate = (e: Event) => navigate((e as CustomEvent<string>).detail)
+    const onPalette = () => setPaletteOpen(true)
+    const onToggleSidebar = () => setSidebarOpen(!sidebarOpen)
+    window.addEventListener('brm:navigate', onNavigate)
+    window.addEventListener('brm:palette', onPalette)
+    window.addEventListener('brm:toggle-sidebar', onToggleSidebar)
+    return () => {
+      window.removeEventListener('brm:navigate', onNavigate)
+      window.removeEventListener('brm:palette', onPalette)
+      window.removeEventListener('brm:toggle-sidebar', onToggleSidebar)
+    }
+  }, [navigate, setPaletteOpen, sidebarOpen, setSidebarOpen])
 
   // Generate-on-open: idempotent scheduler (invoices, notice flips, exam transitions)
   useEffect(() => {
@@ -390,7 +420,7 @@ export function AppShell() {
           </Suspense>
         </main>
         <footer className="border-t border-border px-6 py-3 text-center text-xs text-muted-foreground">
-          {settings?.name ?? 'BMRC School'} · Signed in as {ROLE_LABEL[user.role]}
+          {settings?.name ?? "BRM School"} · Signed in as {ROLE_LABEL[user.role]}
         </footer>
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />

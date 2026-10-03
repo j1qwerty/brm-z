@@ -314,7 +314,7 @@ function TeacherDashboard() {
 function SimpleDashboard({ role }: { role: string }) {
   const { user } = useAuth()
   useWelcomeTour(role, [
-    { element: '[data-tour="s-main"]', popover: { title: 'Welcome to BMRC', description: 'Your work areas are in the sidebar. Start with the portal for everything about you.' } },
+    { element: '[data-tour="s-main"]', popover: { title: 'Welcome to BRM', description: 'Your work areas are in the sidebar. Start with the portal for everything about you.' } },
   ])
   return (
     <div data-tour="s-main" className="space-y-5">

@@ -1,4 +1,4 @@
-# BMRC School Management
+# BRM School Management
 
 A complete school management system for Indian schools (Nursery to Class 12), built for the
 April-March academic session. Frontend-only Firebase app: no backend server, no Firebase
@@ -69,6 +69,11 @@ firebase-admin + tsx + dotenv (local scripts only).
 | `pnpm dev` | Dev server (works instantly in **demo mode**, no Firebase needed) |
 | `pnpm build` | Type-check + production build to `dist/` |
 | `pnpm preview` | Serve the production build |
+| `pnpm icons` | Regenerate the app/installer/tray icons from `public/favicon.svg` |
+| `pnpm electron:dev` | Run the **desktop app** (Electron) with hot reload: Vite + Electron together |
+| `pnpm electron:start` | Run the desktop app against the **production** build (no hot reload) |
+| `pnpm electron:dist` | Package a Windows installer (NSIS) into `release/` |
+| `pnpm electron:dist:dir` | Unpacked Windows build in `release/` (faster, for testing) |
 | `pnpm lint` | ESLint |
 | `pnpm typecheck` | Strict TypeScript check |
 | `pnpm test` | run tests (fast, in-memory — no Firebase, no network) |
@@ -155,6 +160,45 @@ the failed step only. See `sync.md` for the full design.
 - **Reset** is deliberately awkward: a random code is generated on your device, shown in the dialog,
   and must be typed (plus the word `RESET`). Server reset additionally requires a time-boxed admin
   grant — `users` and `settings` are never deleted so you cannot lock yourself out.
+
+## Desktop app (Electron)
+
+The same app ships as a Windows desktop application: a real native shell around the
+production build, not a separate codebase.
+
+```bash
+pnpm electron:dev      # dev: Vite + Electron, hot reload, devtools open
+pnpm electron:start    # production build inside the shell
+pnpm electron:dist     # -> release/BRM-School-Setup-1.0.0.exe
+```
+
+**What the shell adds**
+
+- **Native menus** with the school's actual vocabulary: File (New Admission, Mark
+  Attendance, Collect Fee, Back Up Now, Back Up and Export, Print), Edit, View,
+  **Sync** (Sync Now, Push only, Pull only, Retry failed step, Conflicts, History),
+  Window and Help. Every sync-related item drives the app's own sync engine.
+- **System tray** (non-macOS) with Open / Sync Now / Sync Status / Back Up / Quit.
+  Closing the window hides to the tray; quitting is explicit.
+- **The database is a real file**: `%APPDATA%\bmrc-school-management\data\bmrc-local.sqlite`,
+  written atomically by the main process after every debounced save. Backups are
+  individual `.sqlite` files in `%APPDATA%\bmrc-school-management\backups\`, so they can be
+  copied to a pen drive. Both folders are one click away in **Settings → Sync** and
+  in the app menu.
+- **Remembered window** size/position, single-instance lock, external links open in
+  the real browser, renderer console + crashed-renderer logs in the terminal.
+- **Themed native chrome**: first launch is light; switching to dark in-app updates
+  the window chrome too.
+
+**How it stays secure**: `contextIsolation` on, `nodeIntegration` off, a `contextBridge`
+API (`electron/preload.ts`) as the only surface, and a Content-Security-Policy on the
+packaged build that hashes the inline theme script and allows WebAssembly (sql.js)
+via `'wasm-unsafe-eval'` rather than `'unsafe-eval'`.
+
+**Notes for the packaged build**: routing switches to hash history automatically,
+because the app is loaded over `file://` where path-based URLs cannot be resolved;
+Vite's `base` is relative for the same reason. `BMRC_DESKTOP_DIST=1 electron .` runs the
+built app without packaging, which is the quickest way to reproduce an installer bug.
 
 ### Roles & what each can see
 
@@ -298,6 +342,15 @@ See `AGENTS.md` for the full architecture map and the phase progress log.
 - **Black PDFs:** you replaced html2canvas-pro with html2canvas - Tailwind v4 OKLCH colors
   break the original library. Keep html2canvas-pro.
 - **Signup stuck pending:** ask an admin (or `pnpm users:promote -- --email x --status active`).
+- **Desktop app shows a blank page:** the shell loaded `dist/` from `file://`. Run
+  `pnpm build` first — stale/missing assets produce `ERR_FILE_NOT_FOUND`.
+- **Tray icon is blank:** run `pnpm icons`; `dist-electron/tray.png` is copied from
+  `build/tray.png` at build time and ships as an `extraResources` entry.
+- **Desktop app: `WebAssembly.instantiate() violates Content Security Policy`:** the CSP
+  needs `'wasm-unsafe-eval'` in `script-src` (sql.js). Do not swap it for
+  `'unsafe-eval'`.
+- **Deep links in the packaged app:** hash history (`#/fees?tab=payments`) is used
+  automatically on `file://`. Web builds keep clean paths.
 
 ## Security notes
 

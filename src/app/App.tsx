@@ -1,5 +1,5 @@
 import { lazy, useEffect } from 'react'
-import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
+import { createBrowserRouter, createHashRouter, Navigate, RouterProvider } from 'react-router'
 import { Providers } from './providers'
 import { RequireAuth, RequireCapability, PendingScreen, NotFound } from './guards'
 import { AppShell } from './AppShell'
@@ -37,7 +37,7 @@ const ContactsToolPage = lazy(() => import('@/features/tools/ContactsToolPage'))
 function RoleRedirect() {
   const { user, status } = useAuth()
   useEffect(() => {
-    if (status === 'active' && user) document.title = 'BMRC School Management'
+    if (status === 'active' && user) document.title = 'BRM School Management'
   }, [user, status])
   if (status !== 'active' || !user) return <Navigate to="/login" replace />
   return <Navigate to={ROLE_HOME[user.role]} replace />
@@ -47,9 +47,9 @@ function guard(capability: Capability, element: React.ReactNode) {
   return <RequireCapability capability={capability}>{element}</RequireCapability>
 }
 
-const router = createBrowserRouter([
-  // Root error boundary: a render crash shows a real page, not a dev overlay.
-  { path: '/', element: <ErrorPage />, errorElement: <ErrorPage /> },
+const routes = [
+  // NOTE: errorElement only — declaring `element` here would shadow the real
+  // index route (RoleRedirect) inside the shell below.
   { path: '/login', element: <LoginPage />, errorElement: <ErrorPage /> },
   { path: '/signup', element: <SignupPage />, errorElement: <ErrorPage /> },
   { path: '/complete-profile', element: <CompleteProfilePage />, errorElement: <ErrorPage /> },
@@ -85,7 +85,18 @@ const router = createBrowserRouter([
       ] },
     ],
   },
-])
+]
+
+/**
+ * The desktop shell serves the built app from `file://`, where a path-based
+ * history cannot work (there is no server to rewrite URLs) — every deep link
+ * would 404 on reload. Hash history behaves identically in the browser, so the
+ * router picks whichever one the current environment can actually honour.
+ */
+const useHashHistory =
+  typeof window !== 'undefined' && window.location.protocol === 'file:'
+
+const router = useHashHistory ? createHashRouter(routes) : createBrowserRouter(routes)
 
 export default function App() {
   return (

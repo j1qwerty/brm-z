@@ -93,7 +93,7 @@ export default function TrashPage() {
     <div>
       <PageHeader
         title="Trash"
-        info="Every deletion in BMRC is a soft delete: records keep their history, show who deleted them and when, and can be restored with one click. Nothing is ever permanently removed - by design."
+        info="Every deletion in BRM is a soft delete: records keep their history, show who deleted them and when, and can be restored with one click. Nothing is ever permanently removed - by design."
         actions={
           <div className="flex items-center gap-2">
             <Select value={collection} onValueChange={setCollection}>

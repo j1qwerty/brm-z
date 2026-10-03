@@ -1,4 +1,4 @@
-// Demo dataset for BMRC's in-browser demo mode (no Firebase needed to explore the app).
+// Demo dataset for BRM's in-browser demo mode (no Firebase needed to explore the app).
 // Realistic Indian school data, deterministic ids. Loaded into localStorage by the local provider.
 
 type Doc = Record<string, unknown>
@@ -19,8 +19,8 @@ export function buildDemoDb(): Db {
 
   // ---------------- settings ----------------
   put('settings', 'school', {
-    name: 'BMRC Public School',
-    logoUrl: 'https://ui-avatars.com/api/?name=BMRC&background=0f766e&color=fff&size=128&bold=true',
+    name: 'BRM International Public School',
+    logoUrl: 'https://ui-avatars.com/api/?name=BRM&background=0f766e&color=fff&size=128&bold=true',
     address: 'Plot 14, Vidya Nagar, Habsiguda',
     city: 'Hyderabad, Telangana 500007',
     affiliation: 'CBSE (Aff. 130456)',
@@ -308,7 +308,7 @@ export function buildDemoDb(): Db {
   }
 
   // ---------------- templates (one default per kind) ----------------
-  const logo = 'https://ui-avatars.com/api/?name=BMRC&background=0f766e&color=fff&size=128&bold=true'
+  const logo = 'https://ui-avatars.com/api/?name=BRM&background=0f766e&color=fff&size=128&bold=true'
   put('templates', 'tpl-id-student', {
     kind: 'idcard-student', name: 'Student ID (default)', images: { logo, background: '', extra1: '' },
     isDefault: true,

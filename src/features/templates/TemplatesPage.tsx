@@ -116,7 +116,7 @@ function Designer({
     return {
       student: demoStudent,
       className: cls?.name ?? 'Class 10',
-      school: 'BMRC Public School',
+      school: 'BRM International Public School',
       receipt: {
         no: 'RCP-2026-0042', date: fmtDate(Date.now()),
         student: demoStudent?.name ?? 'Aarav Sharma', cls: `${cls?.name ?? 'Class 10'}-A`,
@@ -521,7 +521,7 @@ export default function TemplatesPage() {
                         <CardContent className="p-4">
                           <div className="flex aspect-[16/10] items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/40">
                             <div style={{ transform: `scale(${Math.min(1, 224 / t.layoutJson.page.w)})`, transformOrigin: 'center' }}>
-                              <TemplateCanvas template={t} data={{ school: 'BMRC Public School', className: 'Class 10-A' }} />
+                              <TemplateCanvas template={t} data={{ school: 'BRM International Public School', className: 'Class 10-A' }} />
                             </div>
                           </div>
                           <div className="mt-3 flex items-center justify-between gap-2">

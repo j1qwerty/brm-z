@@ -7,7 +7,10 @@
  */
 import { isFirebaseConfigured } from '../firebase'
 import { localProvider, localStats, localTransaction, type LocalStats } from './localProvider'
-import { configureSync, isOnline, lastSyncAt, resetSyncState, runSync, subscribeSync, syncSnapshot, type StepState, type SyncOptions, type SyncProgress } from './syncEngine'
+import {
+  configureSync, isOnline, lastSyncAt, resetSyncState, runSync, setPullContext,
+  subscribeSync, syncSnapshot, type StepState, type SyncOptions, type SyncProgress,
+} from './syncEngine'
 import { deviceId, flush, flushNow, hasUnsavedChanges, openDb, persistenceKind, setJsonMeta } from './sqlite'
 import { RESETTABLE_COLLECTIONS, SCHEMA_VERSION } from './schema'
 import type { ResettableRemote } from './reset'
@@ -16,7 +19,7 @@ export interface LocalLayer {
   ready: boolean
   error: string | null
   demoMode: boolean
-  persistence: 'idb' | 'memory' | null
+  persistence: 'idb' | 'file' | 'memory' | null
   schemaVersion: number
   deviceId: string
 }
@@ -63,6 +66,9 @@ export function bootLocalLayer(): Promise<LocalLayer> {
         await seedDemoData()
         await flush()
       }
+      // Desktop: materialise the database file on first launch so the user can
+      // always find (and back up) %APPDATA%/bmrc-school-management/data.
+      if (state.persistence === 'file') await flush()
       state.ready = true
     } catch (e) {
       state.error = e instanceof Error ? e.message : String(e)
@@ -91,6 +97,7 @@ export {
   runSync,
   subscribeSync,
   syncSnapshot,
+  setPullContext,
   lastSyncAt,
   resetSyncState,
   isOnline,

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="BRM School Management">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f766e" />
+      <stop offset="1" stop-color="#0d9488" />
+    </linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" />
+      <stop offset="1" stop-color="#ccfbf1" />
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="url(#bg)" />
+
+  <!-- graduation cap -->
+  <path d="M32 13 8 24l24 11 24-11-24-11Z" fill="url(#cap)" />
+  <path d="M32 19.5 15 27.3l17 7.8 17-7.8-17-7.8Z" fill="#0f766e" opacity=".18" />
+  <!-- book -->
+  <path d="M17 34v13c0 1.4 1.1 2.4 2.5 2.4S22 48.4 22 47V33.4L32 36l10-2.6V47c0 1.4 1.1 2.4 2.5 2.4S47 48.4 47 47V34l-15 3.5L17 34Z" fill="#ffffff" opacity=".95" />
+  <!-- tassel -->
+  <path d="M52 25v9" stroke="#ccfbf1" stroke-width="2" stroke-linecap="round" />
+  <circle cx="52" cy="36.5" r="2.6" fill="#f59e0b" />
+</svg>

@@ -9,6 +9,12 @@ coverage/
 *.tsbuildinfo
 vite.config.*.timestamp-*.mjs
 
+# Electron
+dist-electron/
+release/
+# build/ IS tracked: it holds the generated app icons (icon.ico/png, tray.png)
+# that electron-builder needs. Regenerate with `pnpm icons`.
+
 # Local env files and secrets - never commit
 .env
 .env.local

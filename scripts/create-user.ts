@@ -16,7 +16,7 @@ const args = Object.fromEntries(
 
 const email = args.email
 const password = args.password
-const name = args.name ?? 'BMRC User'
+const name = args.name ?? 'BRM User'
 const role = args.role ?? 'student'
 
 if (!email || !password) {

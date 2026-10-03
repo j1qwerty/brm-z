@@ -24,7 +24,7 @@ const STORAGE_KEY = 'bmrc-sqlite-db-v1'
 const SAVE_DEBOUNCE_MS = 1500
 
 export interface Persistence {
-  kind: 'idb' | 'memory'
+  kind: 'idb' | 'file' | 'memory'
   load(): Promise<Uint8Array | null>
   save(bytes: Uint8Array): Promise<void>
   remove(): Promise<void>
@@ -108,6 +108,49 @@ function memoryPersistence(): Persistence {
   }
 }
 
+/**
+ * Desktop persistence: the snapshot is a real file in the OS app-data folder
+ * (written atomically by the main process) instead of IndexedDB, so backups and
+ * the database can be found, copied and recovered by the user.
+ */
+function desktopPersistence(): Persistence | null {
+  const api = typeof window === 'undefined' ? null : window.bmrcDesktop ?? null
+  if (!api) return null
+  return {
+    kind: 'file',
+    load: async () => {
+      const res = await api.dbRead()
+      return res.ok ? res.bytes : null
+    },
+    save: async (bytes) => {
+      await api.dbWrite(bytes)
+    },
+    remove: async () => {
+      /* the main process owns the file; nothing to remove here */
+    },
+    // Named blobs (backups) become real files in the backups folder, so a
+    // backup is something the user can find and copy.
+    keys: async () => {
+      const res = await api.blobKeys()
+      return res.ok ? (res.keys ?? []) : []
+    },
+    get: async (key) => {
+      const res = await api.blobGet(key)
+      return res.ok ? res.bytes : null
+    },
+    put: async (key, bytes) => {
+      await api.blobPut(key, bytes)
+    },
+    delete: async (key) => {
+      await api.blobDelete(key)
+    },
+  }
+}
+
+function pickPersistence(): Persistence {
+  return desktopPersistence() ?? idbPersistence() ?? memoryPersistence()
+}
+
 // ---------------------------------------------------------------- lifecycle
 
 async function loadSqlJs(): Promise<SqlJsStatic> {
@@ -154,7 +197,7 @@ function migrate(d: Database) {
 export async function openDb(options?: { fresh?: boolean }): Promise<Database> {
   if (db && !options?.fresh) return db
   const sql = await loadSqlJs()
-  persistence = idbPersistence() ?? memoryPersistence()
+  persistence = pickPersistence()
   let bytes: Uint8Array | null = null
   if (!options?.fresh) {
     try {
@@ -179,7 +222,7 @@ export function isOpen(): boolean {
   return db !== null
 }
 
-export function persistenceKind(): 'idb' | 'memory' | null {
+export function persistenceKind(): 'idb' | 'file' | 'memory' | null {
   return persistence?.kind ?? null
 }
 

@@ -1,4 +1,4 @@
-# AGENTS.md - BMRC School Management
+# AGENTS.md - BRM School Management
 
 Working agreement and progress log for coding agents (human or AI) touching this repo.
 
@@ -30,14 +30,21 @@ Netlify hosts the static build; Firestore Security Rules are the authorization l
 9. **TypeScript strict.** Zod schemas shared between forms, mappers and types.
 10. **html2canvas-pro, never html2canvas** (Tailwind v4 OKLCH colors break the original).
 11. **Local-first.** All reads/writes go through `src/lib/data/index.ts` → SQLite (`src/lib/sync/`); never call Firestore directly from a feature. Mutations funnel through `localProvider.writeLocal` (doc + outbox + changelog in ONE transaction). Never ship a service-account key to the browser.
+12. **The desktop shell stays a shell.** `electron/main.ts` owns windows, menus, tray and disk I/O; `electron/preload.ts` is the *only* bridge. Renderer code reaches the shell through `src/lib/desktop.ts`, which must no-op in the browser. Never enable `nodeIntegration`, never import `electron` from `src/`.
+13. **One icon source.** `public/favicon.svg` is the truth; `pnpm icons` derives `build/icon.ico`, `build/icon.png` and `build/tray.png`. Never hand-draw a second icon.
 
 ## Commands (pnpm)
 
 | Command | What it does |
 | --- | --- |
-| `pnpm dev` | Vite dev server with hot reload |
-| `pnpm build` | `tsc -b` + production bundle to `dist/` |
+| `pnpm dev` | Vite dev server with hot reload (port 5121, strictPort) |
+| `pnpm build` | `tsc -b` + production bundle to `dist/` (relative `base`, for `file://`) |
 | `pnpm preview` | Serve the production build locally |
+| `pnpm icons` | Rasterise `public/favicon.svg` → `build/icon.{ico,png}` + `build/tray.png` |
+| `pnpm electron:build` | esbuild-bundle `electron/main.ts` + `preload.ts` to `dist-electron/*.cjs` |
+| `pnpm electron:dev` | Electron + Vite together, hot reload, devtools |
+| `pnpm electron:start` | Electron against the production build |
+| `pnpm electron:dist` | electron-builder → Windows NSIS installer in `release/` |
 | `pnpm lint` | ESLint (flat config) |
 | `pnpm typecheck` | `tsc --noEmit` strict pass |
 | `pnpm test` | Run all in-memory CRUD suites (sessions, classes, subjects, students, staff, teachers, templates, users, generation, integration). Prints pass/fail summary, exits 1 on failure. Pure in-memory, no Firebase/DOM needed. |
@@ -120,6 +127,14 @@ and ask the owner to confirm before moving on. Never silently skip a step.
 - **Sign-up stuck on "pending":** expected. Approve via User Accounts (admin) or
   `pnpm users:promote -- --email <email> --status active`.
 - **"Demo mode" banner:** no Firebase env vars found; add `.env.local` and restart `pnpm dev`.
+- **Desktop blank page / `ERR_FILE_NOT_FOUND`:** the shell loaded `dist/` over `file://`.
+  Run `pnpm build` before `pnpm electron:start`/`dist`.
+- **Desktop CSP blocks WebAssembly:** `script-src` must keep `'wasm-unsafe-eval'`
+  (sql.js), never `'unsafe-eval'`. Inline scripts in `dist/index.html` are hashed
+  automatically by `csp()` in `electron/main.ts`.
+- **Blank tray icon:** `pnpm icons` regenerates `build/tray.png`, which
+  `electron:build` copies into `dist-electron/` and electron-builder ships as an
+  `extraResources` entry.
 
 ## Architecture map
 
@@ -134,11 +149,16 @@ src/
     permissions.ts  role capability matrix (mirrors firestore.rules)
     generate-on-open.ts  idempotent scheduler (invoices, notice flip, exam transitions)
     pdf.ts qr.ts csv helpers, notify.ts (in-app notifications)
+    desktop.ts    renderer-safe bridge to the Electron shell (no-ops in browser)
+    desktopSync.ts  menu/tray command handling + window title
+  sync/          src/lib/sync: SQLite, sync engine, pull plan, queue, conflicts, backups
   components/
     ui/           shadcn-style primitives (Radix)
     shared/       DataTable, TabbedModule, PageHeader+InfoTip, EmptyState, ImageUrlField, tours
   features/       one folder per module; tabs live inside each module page
-scripts/          firebase-admin CLIs (seed/reset/create-user/promote/rules-smoke)
+electron/         main.ts (window/menu/tray/disk) + preload.ts (contextBridge API)
+scripts/          firebase-admin CLIs, test runners, electron-build.mjs, make-icons.mjs
+build/            generated icons (tracked): icon.ico, icon.png, tray.png, icon.svg
 firestore.rules   server-side authorization (the real access control)
 ```
 
@@ -155,5 +175,9 @@ firestore.rules   server-side authorization (the real access control)
 | P7 | Exams, marks entry, publish gating, report cards, certificates, template designers | Done |
 | P8 | Notices, notifications, PTM, messaging, parent/student portals | Done |
 | P9 | Dashboards + charts, bulk contacts, trash, generate-on-open, docs | Done |
+| D1 | Offline-first SQLite + resumable sync + conflicts/backups/history/OTP reset | Done |
+| D2 | Electron desktop shell: native menus, tray, disk-backed DB, icons, CSP, packaging | Done |
 
 Build verification at ship time: `pnpm lint && pnpm typecheck && pnpm build` - all clean.
+Desktop changes additionally need `pnpm electron:build`, a `pnpm electron:start` smoke
+test (file:// + CSP + WASM), and `pnpm test` + `pnpm test:sync` still green.

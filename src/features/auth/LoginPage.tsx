@@ -81,7 +81,7 @@ export default function LoginPage() {
           <span className="flex size-10 items-center justify-center rounded-xl bg-white/15">
             <GraduationCap className="size-6" />
           </span>
-          <p className="text-lg font-bold">BMRC School Management</p>
+          <p className="text-lg font-bold">BRM School Management</p>
         </div>
         <div>
           <h1 className="max-w-md text-3xl font-bold leading-tight">
@@ -102,7 +102,7 @@ export default function LoginPage() {
               <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <GraduationCap className="size-4" />
               </span>
-              <p className="font-bold">BMRC School Management</p>
+              <p className="font-bold">BRM School Management</p>
             </div>
             <h2 className="text-xl font-bold">Sign in</h2>
             <p className="mt-1 text-sm text-muted-foreground">

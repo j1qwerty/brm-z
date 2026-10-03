@@ -327,7 +327,7 @@ export function ReportCardsTab({ classes }: { classes: ClassDoc[] }) {
           <Card>
             <CardContent id="report-card-print" className="bg-white p-8 text-slate-900" >
               <div className="text-center">
-                <p className="text-2xl font-extrabold text-teal-800">{settings?.[0]?.name ?? 'BMRC Public School'}</p>
+                <p className="text-2xl font-extrabold text-teal-800">{settings?.[0]?.name ?? 'BRM International Public School'}</p>
                 <p className="mt-1 text-xs text-slate-500">
                   {settings?.[0]?.address ?? ''}{settings?.[0]?.affiliation ? ` · ${settings[0].affiliation}` : ''}
                 </p>

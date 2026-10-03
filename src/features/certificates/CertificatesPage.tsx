@@ -176,7 +176,7 @@ function IssueSheet({
         <div className="overflow-hidden rounded-xl border border-border bg-muted/30 p-4">
           <div ref={previewRef} className="mx-auto bg-white p-10 text-slate-900" style={{ width: 700 }}>
             <div className="text-center">
-              <p className="text-2xl font-extrabold text-teal-800">{school?.name ?? 'BMRC Public School'}</p>
+              <p className="text-2xl font-extrabold text-teal-800">{school?.name ?? 'BRM International Public School'}</p>
               <p className="mt-1 text-xs text-slate-500">{school?.address ?? ''} · {school?.affiliation ?? ''}</p>
               <p className="mt-4 text-lg font-bold uppercase tracking-widest">{KIND_META[kind].title}</p>
               <p className="mt-1 text-xs tabular text-slate-500">Serial No: {serial}</p>

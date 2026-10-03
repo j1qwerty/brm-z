@@ -34,7 +34,7 @@ export default function ContactsToolPage() {
         out.push({
           name: s.guardianName ?? 'Guardian', contact: phone, child: s.name,
           classLabel: `${classLabel(s.classId)}-${s.section}`,
-          wa: digits.length === 10 ? `https://wa.me/91${digits}?text=${encodeURIComponent(`Dear Parent, greetings from BMRC Public School. `)}` : null,
+          wa: digits.length === 10 ? `https://wa.me/91${digits}?text=${encodeURIComponent(`Dear Parent, greetings from BRM International Public School. `)}` : null,
           mailto: null,
         })
       }

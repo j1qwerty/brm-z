@@ -13,7 +13,7 @@ export function RequireAuth() {
     return (
       <div className="flex h-dvh items-center justify-center gap-2 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" />
-        <span className="text-sm">Loading BMRC School Management...</span>
+        <span className="text-sm">Loading BRM School Management...</span>
       </div>
     )
   }

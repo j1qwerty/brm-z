@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, CheckCircle2, CloudOff, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, CloudOff, FolderOpen, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent } from '@/components/ui/display'
 import { Progress } from '@/components/ui/display'
@@ -15,6 +15,7 @@ import {
   syncSnapshot, type StepState, type SyncProgress,
 } from '@/lib/sync'
 import type { PlanStepId } from '@/lib/sync/schema'
+import { desktop } from '@/lib/desktop'
 import { fmtDateTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
@@ -84,7 +85,15 @@ export default function SyncTab() {
           {online ? 'online' : <><CloudOff className="mr-1 inline size-3" />offline</>}
         </Badge>
         <Badge variant={l.ready ? 'success' : 'warning'}>{l.ready ? 'local database ready' : 'local database starting'}</Badge>
-        <Badge variant="neutral">{l.persistence === 'idb' ? 'persisted in this browser' : l.persistence === 'memory' ? 'memory only (not persisted)' : 'unknown storage'}</Badge>
+        <Badge variant="neutral">
+          {l.persistence === 'file'
+            ? 'saved on disk (desktop)'
+            : l.persistence === 'idb'
+              ? 'persisted in this browser'
+              : l.persistence === 'memory'
+                ? 'memory only (not persisted)'
+                : 'unknown storage'}
+        </Badge>
         <Badge variant="neutral">schema v{l.schemaVersion}</Badge>
         <Badge variant="neutral">device {l.deviceId.slice(0, 8)}</Badge>
         <InfoTip title="How offline mode works">
@@ -93,6 +102,20 @@ export default function SyncTab() {
           everyone else's changes.
         </InfoTip>
       </div>
+
+      {desktop.isDesktop() && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
+          <span className="text-xs text-muted-foreground">
+            The database and backups live in your Windows app-data folder.
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => void desktop.openDataFolder()}>
+            <FolderOpen className="size-4" /> Open data folder
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => void desktop.openBackupsFolder()}>
+            <FolderOpen className="size-4" /> Open backups folder
+          </Button>
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-4">
         <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Local documents</p><p className="text-lg font-bold tabular">{stats.docs}</p></CardContent></Card>

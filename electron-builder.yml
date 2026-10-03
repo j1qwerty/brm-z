@@ -1,0 +1,58 @@
+appId: in.brm.school
+productName: BRM School Management
+copyright: Copyright © BRM International Public School
+directories:
+  output: release
+  # build/ holds the generated icons (see `pnpm icons`); icon.ico -> Windows,
+  # icon.png -> Linux/generic.
+  buildResources: build
+
+# Only the built renderer + the bundled main process ship. Nothing else —
+# node_modules, scripts, service-account keys and the repo stay out.
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+
+# The tray icon has to live next to the bundled main process at runtime.
+extraResources:
+  - from: build/tray.png
+    to: tray.png
+  - from: build/icon.png
+    to: icon.png
+
+asar: true
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: BRM-School-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: BRM School Management
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.education
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+
+linux:
+  icon: build/icon.png
+  category: Education
+  target:
+    - target: AppImage
+      arch: [x64]
+
+# Signing is the owner's job (no certificate is committed); unsigned builds are
+# fine for internal school use.

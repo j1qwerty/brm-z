@@ -4,20 +4,21 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="BMRC School Management - complete ERP for Indian schools (Nursery to Class 12)" />
-    <title>BMRC School Management</title>
+    <meta name="description" content="BRM School Management - complete ERP for Indian schools (Nursery to Class 12)" />
+    <title>BRM School Management</title>
     <script>
-      // Set theme before first paint to avoid FOUC
+      // Resolve the theme before first paint so there is no flash of the wrong
+      // colours. First launch always lands on light: a school's office PC or a
+      // projector should not inherit the machine's dark-mode setting.
       (function () {
+        var theme = 'light'
         try {
-          var t = localStorage.getItem('bmrc-theme')
-          if (!t) {
-            t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-          }
-          document.documentElement.setAttribute('data-theme', t)
+          var saved = localStorage.getItem('bmrc-theme')
+          if (saved === 'light' || saved === 'dark') theme = saved
         } catch (e) {
-          document.documentElement.setAttribute('data-theme', 'light')
+          /* private mode / storage disabled: stay on light */
         }
+        document.documentElement.setAttribute('data-theme', theme)
       })()
     </script>
   </head>

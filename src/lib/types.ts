@@ -1,4 +1,4 @@
-// BMRC Firestore data model (mirrors spec section 4)
+// BRM Firestore data model (mirrors spec section 4)
 // All timestamps are epoch millis (providers convert Firestore Timestamps).
 
 export type Role = 'admin' | 'teacher' | 'accountant' | 'staff' | 'student' | 'parent'

@@ -7,12 +7,18 @@ directories:
   # icon.png -> Linux/generic.
   buildResources: build
 
-# Only the built renderer + the bundled main process ship. Nothing else —
-# node_modules, scripts, service-account keys and the repo stay out.
+# Only the built renderer + the bundled main process ship.
+#
+# `node_modules` is EXCLUDED on purpose. Both entry points are fully bundled:
+# Vite compiles the renderer (including sql.js and its .wasm) into dist/assets,
+# and esbuild compiles main + preload with only `electron` external. So nothing
+# is resolved from disk at runtime, and shipping node_modules added ~291 MB of
+# dead weight to the installer for no benefit.
 files:
   - dist/**/*
   - dist-electron/**/*
   - package.json
+  - '!**/node_modules/**/*'
 
 # The tray icon has to live next to the bundled main process at runtime.
 extraResources:

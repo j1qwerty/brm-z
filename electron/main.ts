@@ -33,10 +33,18 @@ const __dirname_ = __dirname
 const FORCE_DIST = process.argv.includes('--dist') || process.env.BMRC_DESKTOP_DIST === '1'
 const DEV = !app.isPackaged && !FORCE_DIST
 const VITE_URL = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5121'
-// In a packaged app main.cjs sits at the app root, so the renderer is ./dist.
-const RENDERER_DIST = app.isPackaged
-  ? join(__dirname_, 'dist/index.html')
-  : join(__dirname_, '../dist/index.html')
+/**
+ * The renderer entry point.
+ *
+ * `main.cjs` ALWAYS sits in the `dist-electron` folder — during development that
+ * is `<repo>/dist-electron/`, and in a packaged app it is
+ * `<install>/resources/app.asar/dist-electron/`. The built renderer is a sibling
+ * of that folder in both cases (`app.asar/dist/index.html`), so the path is the
+ * same expression either way. Do NOT branch on `app.isPackaged` here: doing so
+ * looks for `app.asar/dist-electron/dist/index.html`, which does not exist, and
+ * the installed app renders nothing.
+ */
+const RENDERER_DIST = join(__dirname_, '..', 'dist', 'index.html')
 /**
  * Resolve a runtime asset that electron-builder ships via `extraResources`.
  *
@@ -238,6 +246,22 @@ function createWindow() {
     void mainWindow.loadURL(VITE_URL)
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
+    // Fail loudly instead of showing a blank window: a wrong renderer path is
+    // otherwise indistinguishable from a broken app.
+    if (!existsSync(RENDERER_DIST)) {
+      console.error(
+        `[renderer] index.html not found at ${RENDERER_DIST}\n` +
+          '  Run `pnpm build` before starting the desktop app.',
+      )
+      dialog.showErrorBox(
+        'BRM School Management',
+        `The application files are incomplete.\n\nCould not find:\n${RENDERER_DIST}\n\n` +
+          'The app needs to be rebuilt. Please contact your administrator.',
+      )
+      quitting = true
+      app.quit()
+      return
+    }
     // Lock the packaged renderer down. Vite injects inline styles and the app
     // talks to Firebase over wss:, so those are the only extras needed.
     mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {

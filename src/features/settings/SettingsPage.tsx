@@ -11,6 +11,11 @@ import { useGet, useUpdate, useList, useCreate } from '@/lib/data/hooks'
 import { useTheme } from '@/app/theme-provider'
 import { THEMES } from '@/lib/themes'
 import type { GradeBand, GradingScaleDoc, SchoolSettingsDoc, SessionDoc } from '@/lib/types'
+import SyncTab from './SyncTab'
+import ConflictsTab from './ConflictsTab'
+import BackupsTab from './BackupsTab'
+import HistoryTab from './HistoryTab'
+import StorageTab from './StorageTab'
 
 function SchoolProfileTab() {
   const { data: settings, isLoading } = useGet<SchoolSettingsDoc>('settings', 'school')
@@ -218,10 +223,15 @@ export default function SettingsPage() {
   return (
     <TabbedModule
       title="School Settings"
-      info="The school profile feeds every PDF and template. The grading scale drives automatic grade computation. Themes are instant, no redeploy needed."
+      info="The school profile feeds every PDF and template. The grading scale drives automatic grade computation. Sync, conflicts, backups, history and local storage live in the tabs on the right."
       tabs={[
         { key: 'profile', label: 'School profile', content: <SchoolProfileTab /> },
         { key: 'grading', label: 'Grading scale', content: <GradingScaleTab /> },
+        { key: 'sync', label: 'Sync', content: <SyncTab /> },
+        { key: 'conflicts', label: 'Conflicts', content: <ConflictsTab /> },
+        { key: 'backups', label: 'Backups', content: <BackupsTab /> },
+        { key: 'history', label: 'History', content: <HistoryTab /> },
+        { key: 'storage', label: 'Storage & reset', content: <StorageTab /> },
         { key: 'appearance', label: 'Appearance', content: <ThemeDefaultsTab /> },
       ]}
     />

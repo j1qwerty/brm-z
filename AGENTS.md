@@ -29,6 +29,7 @@ Netlify hosts the static build; Firestore Security Rules are the authorization l
    states and inline validation.
 9. **TypeScript strict.** Zod schemas shared between forms, mappers and types.
 10. **html2canvas-pro, never html2canvas** (Tailwind v4 OKLCH colors break the original).
+11. **Local-first.** All reads/writes go through `src/lib/data/index.ts` → SQLite (`src/lib/sync/`); never call Firestore directly from a feature. Mutations funnel through `localProvider.writeLocal` (doc + outbox + changelog in ONE transaction). Never ship a service-account key to the browser.
 
 ## Commands (pnpm)
 
@@ -39,7 +40,9 @@ Netlify hosts the static build; Firestore Security Rules are the authorization l
 | `pnpm preview` | Serve the production build locally |
 | `pnpm lint` | ESLint (flat config) |
 | `pnpm typecheck` | `tsc --noEmit` strict pass |
-| `pnpm test` | Run all CRUD suites (sessions, classes, subjects, students, staff, teachers, templates, integration). Prints pass/fail summary, exits 1 on failure. Pure in-memory, no Firebase/DOM needed. |
+| `pnpm test` | Run all in-memory CRUD suites (sessions, classes, subjects, students, staff, teachers, templates, users, generation, integration). Prints pass/fail summary, exits 1 on failure. Pure in-memory, no Firebase/DOM needed. |
+| `pnpm test:sync` | Offline-first suite on a REAL SQLite DB (sql.js in Node) + fake remote: one-transaction writes, outbox, idempotent push, watermark pull, auto-merge + conflict queue, LWW policy, step retry/resume, backups, revert, OTP reset. |
+| `pnpm test:live` | Real Firestore test, ~66 checks, all ids prefixed `tst-` (see `pnpm test-reset`) |
 | `pnpm db:seed` | Seed the real Firebase project with demo school data (needs service account) |
 | `pnpm db:reset` | Wipe all collections (interactive confirm) |
 | `pnpm users:create` | Create Auth user + users doc: `--email --password --name --role` |
@@ -53,6 +56,18 @@ Netlify hosts the static build; Firestore Security Rules are the authorization l
 | `pnpm netlify:env` | Set env vars: `pnpm netlify:env -- VITE_FIREBASE_API_KEY <value>` |
 | `pnpm deploy:preview` | Build + deploy a draft preview to Netlify |
 | `pnpm deploy` | Build + deploy production to Netlify |
+
+## Data flow (must-know)
+
+```
+feature/UI → hooks → src/lib/data/index.ts (dispatcher) → src/lib/sync/localProvider.ts → SQLite
+                    ↑ doc row + outbox row + changelog row written in ONE transaction
+      src/lib/sync/syncEngine.ts (10 checkpointed steps) ⇄ Firestore (signed-in user session)
+```
+
+- Reads never touch the network; sync is background, idempotent and resumable (`sync_state` cursors).
+- Features must NOT import `firestoreProvider` or call Firestore directly — go through the hooks.
+- Conflict policy, backups, history, OTP resets and the phase plan live in `sync.md`.
 
 ## CLI-first setup protocol
 

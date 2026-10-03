@@ -1,6 +1,6 @@
 import {
   collection, doc, getDoc, getDocs, query, where as fsWhere, orderBy as fsOrderBy,
-  limit as fsLimit, addDoc, setDoc, updateDoc, writeBatch, Timestamp,
+  limit as fsLimit, addDoc, setDoc, updateDoc, writeBatch, deleteDoc, Timestamp,
 } from 'firebase/firestore'
 import { getFirebase } from '../firebase'
 import type { DataProvider, QueryOpts, BulkOp } from './provider'
@@ -34,7 +34,10 @@ function constraints(path: string, opts: QueryOpts | undefined) {
   return cs
 }
 
-export const firestoreProvider: DataProvider = {
+export const firestoreProvider: DataProvider & {
+  /** Used only by the settings "reset server data" flow (see firestore.rules). */
+  hardDelete: (path: string, id: string) => Promise<void>
+} = {
   mode: 'firebase',
 
   async list<T>(path: string, opts?: QueryOpts): Promise<T[]> {
@@ -120,6 +123,16 @@ export const firestoreProvider: DataProvider = {
       }
     }
     if (count > 0) await batch.commit()
+  },
+
+  /**
+   * Hard delete — used ONLY by the settings "reset server data" flow, and only
+   * while a live admin `resetGrants/{uid}` document exists (enforced in
+   * firestore.rules). Everywhere else the app soft-deletes.
+   */
+  async hardDelete(path: string, id: string): Promise<void> {
+    const { db } = getFirebase()!
+    await deleteDoc(doc(db, path, id))
   },
 }
 

@@ -332,6 +332,61 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ---------- resetGrants (time-boxed destructive reset) ----------
+    // Settings > Storage > "Reset local + server data" first writes a grant here
+    // with a 10 minute expiry; only while that document exists may the admin
+    // hard-delete app documents. `users` and `settings` are intentionally NOT
+    // covered below, so a reset can never lock admins out or wipe the profile.
+    match /resetGrants/{id} {
+      allow create: if isAdmin() && request.resource.data.expiresAt is int;
+      allow read: if isAdmin();
+      allow update: if false; // closed by expiresAt, never extended
+      allow delete: if false;
+    }
+
+    function liveResetGrant() {
+      return exists(/databases/$(database)/documents/resetGrants/$(request.auth.uid))
+        && get(/databases/$(database)/documents/resetGrants/$(request.auth.uid)).data.expiresAt > request.time;
+    }
+
+    // Only an admin, and only inside a live reset window.
+    function canHardDelete() {
+      return isAdmin() && liveResetGrant();
+    }
+
+    // ---------- reset-scope hard deletes ----------
+    // Soft delete stays the only option everywhere else. These allows are inert
+    // until an admin creates resetGrants/{their uid} from Settings > Storage.
+    match /sessions/{id} { allow delete: if canHardDelete(); }
+    match /classes/{classId} {
+      allow delete: if canHardDelete();
+      match /subjects/{subjectId} { allow delete: if canHardDelete(); }
+    }
+    match /assignments/{id} { allow delete: if canHardDelete(); }
+    match /students/{id} { allow delete: if canHardDelete(); }
+    match /staff/{id} { allow delete: if canHardDelete(); }
+    match /attendance/{id} { allow delete: if canHardDelete(); }
+    match /feeTypes/{id} { allow delete: if canHardDelete(); }
+    match /feeAssignments/{id} { allow delete: if canHardDelete(); }
+    match /invoices/{id} { allow delete: if canHardDelete(); }
+    match /payments/{id} { allow delete: if canHardDelete(); }
+    match /exams/{id} { allow delete: if canHardDelete(); }
+    match /marks/{id} { allow delete: if canHardDelete(); }
+    match /gradingScales/{id} { allow delete: if canHardDelete(); }
+    match /reportCards/{id} { allow delete: if canHardDelete(); }
+    match /templates/{id} { allow delete: if canHardDelete(); }
+    match /certificates/{id} { allow delete: if canHardDelete(); }
+    match /notices/{id} { allow delete: if canHardDelete(); }
+    match /notifications/{id} { allow delete: if canHardDelete(); }
+    match /timetable/{id} { allow delete: if canHardDelete(); }
+    match /timetableConfig/{id} { allow delete: if canHardDelete(); }
+    match /leaves/{id} { allow delete: if canHardDelete(); }
+    match /documents/{id} { allow delete: if canHardDelete(); }
+    match /ptms/{id} { allow delete: if canHardDelete(); }
+    match /messages/{id} { allow delete: if canHardDelete(); }
+    match /calendarEvents/{id} { allow delete: if canHardDelete(); }
+    match /runHistory/{key} { allow delete: if canHardDelete(); }
+
     // ---------- runHistory (generate-on-open idempotency) ----------
     match /runHistory/{key} {
       allow read: if isActiveUser();

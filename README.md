@@ -72,6 +72,7 @@ firebase-admin + tsx + dotenv (local scripts only).
 | `pnpm lint` | ESLint |
 | `pnpm typecheck` | Strict TypeScript check |
 | `pnpm test` | run tests (fast, in-memory — no Firebase, no network) |
+| `pnpm test:sync` | offline-first/sync suite on a REAL SQLite database (sql.js in Node) + fake remote: outbox, pull, conflicts, checkpoints, backups, revert, OTP reset |
 | `pnpm test:live` | REAL tests against real Firestore: 2 sessions, Classes 1-10 (A+B), 60 students, parents, attendance, timetable, fees, exams/marks — all ids prefixed `tst-` (needs service account key) |
 | `pnpm test-reset` | Delete ONLY `tst-` test docs from real Firestore (real school data untouched) |
 | `pnpm db:seed` | Seed real Firebase with demo school data (needs service account key) |
@@ -131,6 +132,23 @@ works offline; a banner reminds you it is local-only.
    (Parents sign up themselves in real usage; this seeded parent is pre-linked to two children
    for testing.) Prefer real emails? `pnpm users:create -- --email you@school.in --password "Strong!" --name "Your Name" --role admin`.
 7. `pnpm dev` - the demo banner disappears once Firebase env vars are detected.
+
+## Offline-first sync
+
+The app is **local-first**: every read and write goes to a local SQLite database (`sql.js`,
+persisted in this browser), so it works with no network. Changes are queued in an outbox and pushed
+to Firestore by a sync plan of 10 checkpointed steps — if the connection drops, the plan resumes at
+the failed step only. See `sync.md` for the full design.
+
+- **Settings** gained five tabs: **Sync** (status, manual sync, per-step progress + retry),
+  **Conflicts** (side-by-side mine vs server), **Backups** (last 5, restore any, export),
+  **History** (every change with a diff + revert) and **Storage & reset**.
+- **Conflicts**: disjoint edits merge automatically, same-field edits resolve by logical clock
+  (lamport, tie-broken on device id), and structural fields (sections, slots, bands, child links)
+  are parked for a human decision instead of being guessed.
+- **Reset** is deliberately awkward: a random code is generated on your device, shown in the dialog,
+  and must be typed (plus the word `RESET`). Server reset additionally requires a time-boxed admin
+  grant — `users` and `settings` are never deleted so you cannot lock yourself out.
 
 ### Roles & what each can see
 

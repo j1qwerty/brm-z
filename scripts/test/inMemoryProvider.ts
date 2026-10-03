@@ -42,6 +42,12 @@ export function createInMemoryProvider(): DataProvider & {
         case '<=':
           if (!((dv as never) <= (value as never))) return false
           break
+        case '<':
+          if (!((dv as never) < (value as never))) return false
+          break
+        case '>':
+          if (!((dv as never) > (value as never))) return false
+          break
         case '>=':
           if (!((dv as never) >= (value as never))) return false
           break

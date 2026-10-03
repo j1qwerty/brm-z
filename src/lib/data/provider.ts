@@ -1,6 +1,6 @@
 import type { BaseDoc } from '../types'
 
-export type WhereOp = '==' | 'in' | '!=' | '<=' | '>=' | 'array-contains'
+export type WhereOp = '==' | 'in' | '!=' | '<' | '<=' | '>' | '>=' | 'array-contains'
 
 export interface QueryOpts {
   where?: [string, WhereOp, unknown][]

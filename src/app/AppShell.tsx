@@ -10,6 +10,8 @@ import { THEMES } from '@/lib/themes'
 import { ROLE_LABEL } from '@/lib/permissions'
 import { useList, useUpdate } from '@/lib/data/hooks'
 import { useQueryClient } from '@tanstack/react-query'
+import { useSyncLifecycle } from '@/lib/sync/lifecycle'
+import { useSyncBadge } from '@/lib/sync/useSyncBadge'
 import { runGenerateOnOpen } from '@/lib/generate-on-open'
 import { useGet } from '@/lib/data/hooks'
 import type { NotificationDoc, SessionDoc, SchoolSettingsDoc } from '@/lib/types'
@@ -36,6 +38,7 @@ function Sidebar() {
   const { sidebarOpen, setSidebarOpen } = useAppStore()
   const loc = useLocation()
   const sections = navForRole(user?.role)
+  const syncBadge = useSyncBadge()
 
   const isItemActive = (item: { to: string }) => {
     // Items that target a specific tab via ?tab= only highlight when that tab is active.
@@ -93,7 +96,22 @@ function Sidebar() {
                   }
                 >
                   <item.icon className="size-4 shrink-0 opacity-80" />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {syncBadge && item.to === '/settings' && (
+                    <span
+                      className={cn(
+                        'flex size-4.5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular',
+                        syncBadge.conflicts > 0 ? 'bg-danger text-white' : 'bg-warning-soft text-warning',
+                      )}
+                      title={
+                        syncBadge.conflicts > 0
+                          ? `${syncBadge.conflicts} sync conflict(s) to resolve`
+                          : `${syncBadge.pending} change(s) waiting to sync`
+                      }
+                    >
+                      {syncBadge.conflicts > 0 ? '!' : syncBadge.pending}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </div>
@@ -325,6 +343,7 @@ export function AppShell() {
   const session = useActiveSession()
   const { paletteOpen, setPaletteOpen } = useAppStore()
   const { data: settings } = useGet<SchoolSettingsDoc>('settings', 'school')
+  useSyncLifecycle()
 
   // Ctrl/Cmd+K opens the command palette
   useEffect(() => {

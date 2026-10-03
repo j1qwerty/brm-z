@@ -8,10 +8,12 @@
  *   - Run each suite sequentially, reset the DB between suites for isolation
  *   - Print a per-test PASS/FAIL line, then a final summary with all failures
  */
-// Polyfills MUST be imported first so `src/lib/firebase.ts` and
-// `src/lib/data/local.ts` don't crash when running outside Vite/browser.
-import './setup.polyfills'
-
+// NOTE on ordering (see main()): sql.js is initialised BEFORE
+// `setup.polyfills` patches `import.meta`. Patching import.meta makes tsx load
+// the CJS emscripten glue as ESM, which then tries to `import()` the .wasm and
+// fails with a confusing "Cannot find package 'a'" error. Suites themselves
+// only touch import.meta.env lazily, so hoisted imports are safe here.
+import { openDb } from '../../src/lib/sync/sqlite'
 import { createInMemoryProvider, type Db } from './inMemoryProvider'
 import { printSummary, type TestResult, type SuiteContext } from './harness'
 import { sessionsSuite } from './sessions.test'
@@ -22,8 +24,17 @@ import { usersSuite } from './users.test'
 import { generationSuite } from './generation.test'
 import { templatesSuite } from './templates.test'
 import { integrationSuite } from './integration.test'
+import { syncSuite } from './sync.test'
 
 async function main() {
+  const isSyncSuite = process.argv.includes('--sync') || process.argv.includes('--all')
+
+  // 1) real SQLite first (must precede the import.meta polyfill — see note above)
+  if (isSyncSuite) await openDb({ fresh: true })
+
+  // 2) then the polyfills, so `src/lib/firebase.ts` never sees an undefined env
+  await import('./setup.polyfills')
+
   const provider = createInMemoryProvider()
   const ctx: SuiteContext = {
     provider: provider as SuiteContext['provider'],
@@ -42,6 +53,10 @@ async function main() {
     templatesSuite(),
     integrationSuite(),
   ]
+
+  if (isSyncSuite) {
+    suites.push(syncSuite())
+  }
 
   console.log(`\n${'='.repeat(72)}`)
   console.log(`Running ${suites.length} test suites`)

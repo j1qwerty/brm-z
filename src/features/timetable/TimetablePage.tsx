@@ -131,7 +131,7 @@ export default function TimetablePage() {
   const [draft, setDraft] = useState<SlotDraft>({ subjectId: '', teacherId: '' })
 
   const cls = classes?.find((c) => c.id === classId)
-  const { data: subjects } = useList<SubjectDoc>(cls ? `classes/${cls.id}/subjects` : 'classes/none/subjects', undefined, { enabled: Boolean(cls) })
+  const { data: subjects, isLoading: subjectsLoading, isError: subjectsError, refetch: refetchSubjects } = useList<SubjectDoc>(cls ? `classes/${cls.id}/subjects` : 'classes/none/subjects', undefined, { enabled: Boolean(cls) })
 
   // Periods per class-section: Mon-Fri vs Saturday can differ (6 vs 8 etc).
   const config = configs?.find((c) => c.classId === classId && c.section === section)
@@ -382,18 +382,27 @@ export default function TimetablePage() {
                 <InfoTip title="Conflict check">Teachers free at this day+period are listed first, then those already booked (shown with the subject and class they have). Pick a subject and the teachers who teach it float to the top. Saving a busy teacher is blocked.</InfoTip>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Subject</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-muted-foreground">Subject</label>
+                  {subjectsError && cls && (
+                    <button type="button" className="text-xs font-medium text-primary hover:underline" onClick={() => void refetchSubjects()}>
+                      Retry
+                    </button>
+                  )}
+                </div>
                 <Select value={draft.subjectId} onValueChange={(v) => setDraft((d) => ({ ...d, subjectId: v }))}>
                   <SelectTrigger><SelectValue placeholder="Pick subject" /></SelectTrigger>
                   <SelectContent>
-                    {subjects && subjects.length > 0 ? (
+                    {!cls ? (
+                      <SelectItem value="__none__" disabled>Select a class above first</SelectItem>
+                    ) : subjectsLoading ? (
+                      <SelectItem value="__none__" disabled>Loading subjects…</SelectItem>
+                    ) : subjectsError ? (
+                      <SelectItem value="__none__" disabled>Couldn't load subjects — press Retry</SelectItem>
+                    ) : subjects && subjects.length > 0 ? (
                       subjects.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
                     ) : (
-                      // Never render a silently empty dropdown: say whether it is still
-                      // loading or the class genuinely has no subjects yet.
-                      <SelectItem value="__none__" disabled>
-                        {subjects ? 'No subjects in this class yet' : 'Loading subjects…'}
-                      </SelectItem>
+                      <SelectItem value="__none__" disabled>No subjects in this class yet — add them in Classes</SelectItem>
                     )}
                   </SelectContent>
                 </Select>

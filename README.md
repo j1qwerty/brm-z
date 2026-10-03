@@ -140,9 +140,15 @@ persisted in this browser), so it works with no network. Changes are queued in a
 to Firestore by a sync plan of 10 checkpointed steps — if the connection drops, the plan resumes at
 the failed step only. See `sync.md` for the full design.
 
-- **Settings** gained five tabs: **Sync** (status, manual sync, per-step progress + retry),
-  **Conflicts** (side-by-side mine vs server), **Backups** (last 5, restore any, export),
-  **History** (every change with a diff + revert) and **Storage & reset**.
+- **Settings** gained five tabs: **Sync** (status, the 10-step plan with per-step retry, plus two
+  tables: everything changed here that is not on the server yet — with Push now / Discard — and what
+  the last runs actually synced, with per-step breakdowns and Re-run), **Conflicts** (side-by-side
+  mine vs server), **Backups** (last 5, restore any, export), **History** (every change with a diff
+  + revert) and **Storage & reset**.
+- **Permission-aware sync**: Firestore rules are evaluated per document, so collections like
+  notifications, messages and invoices cannot be listed without a matching filter. The pull plan
+  (`src/lib/sync/pullPlan.ts`) picks a safe read strategy per collection *and per role*, and a
+  collection your role may not list is reported and skipped instead of failing the sync.
 - **Conflicts**: disjoint edits merge automatically, same-field edits resolve by logical clock
   (lamport, tie-broken on device id), and structural fields (sections, slots, bands, child links)
   are parked for a human decision instead of being guessed.

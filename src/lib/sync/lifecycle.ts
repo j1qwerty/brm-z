@@ -11,7 +11,7 @@
 import { useEffect } from 'react'
 import { DEMO_MODE, connectRemote } from '../data'
 import { useAuth } from '../auth'
-import { isOnline, runSync, type SyncMode } from './syncEngine'
+import { isOnline, runSync, setPullContext, type SyncMode } from './syncEngine'
 
 const IDLE_INTERVAL_MS = 5 * 60 * 1000
 
@@ -22,6 +22,16 @@ export function useSyncLifecycle() {
     const userId = user?.id
     if (DEMO_MODE || status !== 'active' || !userId) return
     connectRemote()
+    // Firestore rules are per-document, so the pull plan must know who is
+    // syncing: it decides which collections can be listed at all and which need
+    // a filtered query (see pullPlan.ts).
+    setPullContext({
+      role: user!.role,
+      uid: userId,
+      studentId: user!.studentId,
+      staffId: user!.staffId,
+      childIds: user!.childIds ?? [],
+    })
 
     let cancelled = false
     const trigger = (mode: SyncMode) => {

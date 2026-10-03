@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent } from '@/components/ui/display'
 import { Progress } from '@/components/ui/display'
 import { InfoTip } from '@/components/shared/PageHeader'
+import SyncQueues from './SyncQueues'
 import {
   isOnline, lastSyncAt, layer, localStats, resetSyncState, runSync, subscribeSync,
   syncSnapshot, type StepState, type SyncProgress,
@@ -57,19 +58,27 @@ export default function SyncTab() {
   const failed = progress.steps.filter((s) => s.status === 'failed')
   const online = isOnline()
 
+  /** Re-reads everything this tab shows (called after actions in the tables). */
+  const refresh = () => {
+    setProgress(syncSnapshot())
+    setStats(localStats())
+    setL(layer())
+  }
+
   const start = async (mode: 'full' | 'push' | 'pull') => {
     if (!online) {
       toast.error('You are offline', { description: 'Changes keep saving locally and will sync when the connection returns.' })
       return
     }
     const p = await runSync({ mode })
-    setStats(localStats())
+    refresh()
     if (p.lastError) toast.error('Sync finished with errors', { description: p.lastError })
     else toast.success(`Sync ${mode === 'full' ? 'complete' : mode}`, { description: `${p.pushed} pushed · ${p.pulled} pulled` })
   }
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+      <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant={online ? 'success' : 'danger'}>
           {online ? 'online' : <><CloudOff className="mr-1 inline size-3" />offline</>}
@@ -142,6 +151,10 @@ export default function SyncTab() {
           saved cursor, never from the beginning.
         </p>
       )}
+      </div>
+
+      {/* right column: what is waiting to sync + what the last runs did */}
+      <SyncQueues onChanged={refresh} />
     </div>
   )
 }

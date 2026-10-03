@@ -27,6 +27,8 @@ import { listConflicts, resolveConflict, openConflictCount } from '../../src/lib
 import { createOtpChallenge, resetLocal, verifyOtp, clearOtpChallenge } from '../../src/lib/sync/reset'
 import { configureSync, readSteps, resetSyncState, runSync, syncSnapshot } from '../../src/lib/sync/syncEngine'
 import { STRUCTURAL_FIELDS } from '../../src/lib/sync/schema'
+import { buildPullPlan } from '../../src/lib/sync/pullPlan'
+import { discardPending, pendingChanges, recentRuns } from '../../src/lib/sync/queue'
 
 // ------------------------------------------------------------------ fake remote
 
@@ -405,7 +407,8 @@ export function syncSuite() {
           configureSync({ remote, isOnline: () => true, backoffMs: [1, 1, 1] })
           const originalList = remote.list.bind(remote)
           remote.list = (async (path: string, opts?: QueryOpts) => {
-            if (failPull && path === 'sessions') throw new Error('network unreachable')
+            // a real outage: EVERY collection fails, so the step itself fails
+            if (failPull) throw new Error('network unreachable')
             return originalList(path, opts)
           }) as typeof remote.list
 
@@ -531,6 +534,149 @@ export function syncSuite() {
           t.equals(adopted!.staffId, 'st-001', 'linked staff id preserved')
           t.equals(pendingOpCount(), 0, 'the queued bogus create is dropped, so it cannot overwrite the server')
           t.equals(readDoc('users', 'u-teacher-uid')!.dirty, 0, 'adopted doc is clean, nothing to push')
+        },
+      })
+
+      tests.push({
+        name: 'pull plan is permission-aware: per-document collections are filtered, not listed',
+        run: (t) => {
+          const admin = buildPullPlan({ role: 'admin', uid: 'u1' })
+          const adminNotifications = admin.targets.find((x) => x.collection === 'notifications')
+          t.notNil(adminNotifications, 'admin still syncs notifications')
+          t.truthy(
+            JSON.stringify(adminNotifications?.where) === JSON.stringify([['userId', '==', 'u1']]),
+            'notifications are filtered by userId (a plain list would be rejected by rules)',
+          )
+
+          const teacher = buildPullPlan({ role: 'teacher', uid: 'u2', staffId: 'st-1' })
+          t.truthy(
+            JSON.stringify(teacher.targets.find((x) => x.collection === 'users')?.where) === JSON.stringify([['status', '==', 'active']]),
+            'teachers only list active users',
+          )
+          t.falsy(teacher.targets.some((x) => x.collection === 'invoices'), 'teachers cannot list invoices')
+          t.truthy(teacher.skipped.includes('invoices'), 'and are told it was skipped')
+
+          const parent = buildPullPlan({ role: 'parent', uid: 'u3', childIds: ['s1', 's2'] })
+          const invoices = parent.targets.find((x) => x.collection === 'invoices')
+          t.truthy(JSON.stringify(invoices?.where) === JSON.stringify([['studentId', 'in', ['s1', 's2']]]), 'parents query invoices by childIds')
+          const marks = parent.targets.find((x) => x.collection === 'marks')
+          t.notNil(marks?.fanout, 'marks are pulled per published exam (the rule checks the parent exam)')
+          t.equals(
+            (marks?.fanout?.values([{ id: 'e1', status: 'published' }, { id: 'e2', status: 'draft' }]) ?? []).join(','),
+            'e1',
+            'only published exams are fanned out',
+          )
+
+          const accountant = buildPullPlan({ role: 'accountant', uid: 'u4' })
+          t.truthy(
+            JSON.stringify(accountant.targets.find((x) => x.collection === 'templates')?.where) === JSON.stringify([['kind', '==', 'receipt']]),
+            'accountants only list receipt templates',
+          )
+          t.falsy(accountant.targets.some((x) => x.collection === 'students'), 'accountants cannot list students')
+        },
+      })
+
+      tests.push({
+        name: 'a denied collection does not fail the whole pull step',
+        run: async (t: AssertAPI) => {
+          resetLocalDb()
+          resetSyncState()
+          const remote = createFakeRemote()
+          const originalList = remote.list.bind(remote)
+          remote.list = (async (path: string, opts?: QueryOpts) => {
+            if (path === 'messages') throw new Error('Missing or insufficient permissions.')
+            return originalList(path, opts)
+          }) as typeof remote.list
+          configureSync({ remote, isOnline: () => true, backoffMs: [1, 1], pullContext: { role: 'admin', uid: 'u-admin' } })
+
+          await remote.create('notices', {
+            title: 'N', body: 'b', audience: { type: 'all', value: [] }, publishAt: Date.now(),
+            status: 'live', isPinned: false, createdBy: 'u1', attachmentsUrl: [], updatedAt: Date.now(),
+          }, 'n1')
+
+          await runSync({ onlyStep: 'pull-comms' })
+          t.equals(stepOf('pull-comms')?.status, 'done', 'step completes despite one denied collection')
+          t.equals((await localProvider.list('notices')).length, 1, 'the readable collections still synced')
+          t.truthy(/not readable/.test(stepOf('pull-comms')?.detail ?? ''), 'the denial is reported in the step detail')
+        },
+      })
+
+      tests.push({
+        name: 'messages are pulled through the thread ids the user participates in',
+        run: async (t: AssertAPI) => {
+          resetLocalDb()
+          resetSyncState()
+          const remote = createFakeRemote()
+          configureSync({ remote, isOnline: () => true, backoffMs: [1, 1], pullContext: { role: 'parent', uid: 'u-parent-1', childIds: ['s1'] } })
+          await remote.create('messages', { threadId: 'u-parent-1_u-teacher-1_s1', senderId: 'u-parent-1', senderName: 'Me', text: 'hi', sentAt: 1, updatedAt: 1000 }, 'm1')
+          await remote.create('messages', { threadId: 'u-parent-1_u-teacher-1_s1', senderId: 'u-teacher-1', senderName: 'Teacher', text: 'hello', sentAt: 2, updatedAt: 2000 }, 'm2')
+          await remote.create('messages', { threadId: 'u-x_u-y-z9', senderId: 'u-someone-else', senderName: 'Stranger', text: 'not yours', sentAt: 3, updatedAt: 3000 }, 'm3')
+
+          await runSync({ onlyStep: 'pull-comms' })
+          const ids = (await localProvider.list<{ id: string }>('messages')).map((m) => m.id)
+          t.truthy(ids.includes('m1') && ids.includes('m2'), 'both sides of my thread synced')
+          t.falsy(ids.includes('m3'), 'another users thread is never fetched')
+        },
+      })
+
+      tests.push({
+        name: 'pending queue: changes are listed, pushed and discardable',
+        run: async (t: AssertAPI) => {
+          resetLocalDb()
+          resetSyncState()
+          const remote = createFakeRemote()
+          configureSync({ remote, isOnline: () => true, backoffMs: [1, 1], pullContext: { role: 'admin', uid: 'u-admin' } })
+
+          await localProvider.create('classes', { name: 'Class 3', sections: ['A'], order: 3 }, 'c-q')
+          await localProvider.update('classes', 'c-q', { name: 'Class 3 (renamed)' })
+
+          const queued = pendingChanges()
+          t.equals(queued.length, 1, 'collapsed into one queued change per record')
+          t.equals(queued[0].collection, 'classes', 'collection reported')
+          t.equals(queued[0].label, 'Class 3 (renamed)', 'readable label taken from the document')
+          t.truthy(queued[0].fields.includes('name'), 'touched field listed')
+
+          const discarded = discardPending(queued[0].opId)
+          t.truthy(discarded.ok, 'discarded')
+          t.equals(pendingChanges().length, 0, 'queue is empty again')
+          t.equals(readDoc('classes', 'c-q')!.dirty, 0, 'record marked clean so the next pull re-fetches it')
+
+          await localProvider.create('students', { name: 'Queued Kid', gender: 'male', classId: 'c-q', section: 'A', admissionNo: 'Q1', status: 'active' }, 's-q')
+          const pushed = await runSync({ mode: 'push' })
+          t.truthy(pushed.pushed >= 1, 'push sent the queued create')
+          t.equals(pendingChanges().length, 0, 'queue drained after push')
+          t.notNil(await remote.get('students', 's-q'), 'document reached the server')
+        },
+      })
+
+      tests.push({
+        name: 'sync run history records what each run pushed, pulled and failed',
+        run: async (t: AssertAPI) => {
+          resetLocalDb()
+          resetSyncState()
+          const remote = createFakeRemote()
+          configureSync({ remote, isOnline: () => true, backoffMs: [1, 1], pullContext: { role: 'admin', uid: 'u-admin' } })
+
+          await localProvider.create('sessions', { name: '2026-2027', startDate: '2026-04-01', endDate: '2027-03-31', isActive: true, isCompleted: false }, 'sess-r')
+          await runSync({ mode: 'push' })
+
+          const runs = recentRuns(10)
+          t.truthy(runs.length >= 1, 'a run row was written')
+          const lastRunRow = runs[0]
+          t.equals(lastRunRow.mode, 'push', 'mode recorded')
+          t.equals(lastRunRow.status, 'done', 'status recorded')
+          t.truthy(lastRunRow.pushed >= 1, 'pushed count recorded')
+          t.notNil(lastRunRow.finishedAt, 'finished timestamp recorded')
+          t.truthy(lastRunRow.steps.length > 0, 'per-step snapshot stored for the details view')
+          t.truthy(lastRunRow.steps.some((s) => s.step === 'push-outbox' && s.status === 'done'), 'the push step is in the snapshot')
+
+          const broken = createFakeRemote()
+          broken.list = (async () => { throw new Error('Missing or insufficient permissions.') }) as typeof broken.list
+          configureSync({ remote: broken, isOnline: () => true, backoffMs: [1], pullContext: { role: 'admin', uid: 'u-admin' } })
+          await runSync({ onlyStep: 'pull-sessions' })
+          const afterFail = recentRuns(1)[0]
+          t.truthy(afterFail.steps.length > 0, 'failing run still stores its step snapshot')
+          t.equals(afterFail.failedStep, 'pull-sessions', 'failing step recorded so the UI can re-run just that one')
         },
       })
 

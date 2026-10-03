@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
 import { Providers } from './providers'
 import { RequireAuth, RequireCapability, PendingScreen, NotFound } from './guards'
 import { AppShell } from './AppShell'
+import ErrorPage from './ErrorPage'
 import { useAuth } from '@/lib/auth'
 import { ROLE_HOME } from '@/lib/permissions'
 import type { Capability } from '@/lib/permissions'
@@ -47,14 +48,17 @@ function guard(capability: Capability, element: React.ReactNode) {
 }
 
 const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
-  { path: '/signup', element: <SignupPage /> },
-  { path: '/complete-profile', element: <CompleteProfilePage /> },
-  { path: '/pending', element: <PendingScreen /> },
+  // Root error boundary: a render crash shows a real page, not a dev overlay.
+  { path: '/', element: <ErrorPage />, errorElement: <ErrorPage /> },
+  { path: '/login', element: <LoginPage />, errorElement: <ErrorPage /> },
+  { path: '/signup', element: <SignupPage />, errorElement: <ErrorPage /> },
+  { path: '/complete-profile', element: <CompleteProfilePage />, errorElement: <ErrorPage /> },
+  { path: '/pending', element: <PendingScreen />, errorElement: <ErrorPage /> },
   {
     element: <RequireAuth />,
+    errorElement: <ErrorPage />,
     children: [
-      { element: <AppShell />, children: [
+      { element: <AppShell />, errorElement: <ErrorPage />, children: [
         { path: '/', element: <RoleRedirect /> },
         { path: '/dashboard', element: <DashboardPage /> },
         { path: '/users', element: guard('users.manage', <UsersPage />) },

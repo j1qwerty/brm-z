@@ -133,11 +133,19 @@ async function loadSqlJs(): Promise<SqlJsStatic> {
   return SQL
 }
 
+function hasColumn(d: Database, table: string, column: string): boolean {
+  const res = d.exec(`PRAGMA table_info(${table})`)
+  return res.length > 0 && res[0]!.values.some((row) => String(row[1]) === column)
+}
+
 function migrate(d: Database) {
   d.run(DDL)
+  // v2: sync_state.detail (step notes must survive a reload / be visible after restart)
+  if (!hasColumn(d, 'sync_state', 'detail')) {
+    d.run('ALTER TABLE sync_state ADD COLUMN detail TEXT')
+  }
   const current = Number(getMetaRaw(d, 'schema_version') ?? '0')
   if (current < SCHEMA_VERSION) {
-    // Future migrations go here (ALTER TABLE ... / backfill), never by editing DDL.
     setMetaRaw(d, 'schema_version', String(SCHEMA_VERSION))
   }
 }

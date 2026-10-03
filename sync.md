@@ -265,10 +265,29 @@ monotonicity. The practical guarantee is "the plan converges to a consistent sta
 stopped". If true atomicity is ever required, the only route is a Cloud Function (a rules
 exception to decide on, not now).
 
-### 6.4 Pull
+### 6.4 Pull (permission-aware)
 
 Per collection: `where('updatedAt','>', watermark).orderBy('updatedAt').limit(page)`, watermark
 advanced after each page. Single-field ordering → Firestore auto-index, **no new composite index**.
+
+**Crucially, not every collection can be `list()`ed.** Firestore evaluates Security Rules *per
+document*, so any rule that inspects `resource.data` (`userId == auth.uid`, `inThread()`,
+`studentId in myChildIds()`) rejects a plain `list()` outright — the engine cannot prove the query
+is safe. `src/lib/sync/pullPlan.ts` therefore declares, per role, how each collection may be read:
+
+| Strategy | Meaning | Example |
+|---|---|---|
+| plain | role-only rule, `list()` is provably fine | `classes`, `timetable`, `ptms` |
+| filtered | query carries the rule's own predicate | `notifications where userId == uid`; `users where status == 'active'` (teacher); `templates where kind == 'receipt'` (accountant); `invoices where studentId in childIds` (parent) |
+| per-parent | fan out one filtered query per parent doc | `marks` per **published** exam (the rule does a `get()` on the parent exam) |
+| skip | readable one record at a time, not listable | fee collections for teachers, `certificates` for staff |
+
+`messages` is special: `threadId.split('_')` contains the uid, which no filter can reproduce. We
+learn the user's thread ids from the messages they sent, then pull each thread explicitly — so a
+parent gets both sides of their own thread and never anyone else's.
+
+One denied collection is recorded and skipped, never fatal to the step (the step detail names it).
+
 Each pulled doc is applied through the same choke point with `origin='remote'`:
 
 - no local dirty change on that doc → straight apply, `dirty=0`
@@ -359,7 +378,7 @@ the existing `pnpm db:reset` CLI — zero rules change but not available to non-
 
 | Tab | Contents |
 |---|---|
-| **Sync** | online/offline badge, last sync, next scheduled sync, "Sync now", per-step progress with status/duration/error + "Retry failed step", push-only / pull-only, scope selector, device id, lamport, DB size |
+| **Sync** | Left column: online/offline badge, local DB readiness + storage + schema + device, counters (docs / waiting to push / conflicts / last sync), Sync now · Push only · Pull only · Reset plan state, then the 10-step plan with per-step status, note and "Retry". Right column, two tables: **(1) Changed here, not on the server yet** — every queued outbox row with record label, change type, touched fields, waiting time and a failure hint; actions: **Push now** (header + bulk) and per-row **Discard** (drops the local edit and lets the next pull re-fetch the server copy), plus search, column picker and CSV export. **(2) Synced last time** — one row per run: when, mode, duration, result, pushed/pulled/conflicts and notes; actions: **Steps** (per-step breakdown of that run), **Re-run** (re-runs only that run's failing step, or its push step), bulk re-run, CSV export, Clear history. |
 | **Conflicts** | side-by-side local vs remote per field, keep mine / keep theirs / edit, batch resolve, jump to record |
 | **Backups** | list (reason, time, size, docs), back up now, restore, export to disk, delete |
 | **History** | changelog with diffs, revert, filters |
@@ -407,11 +426,18 @@ Roughly 3 weeks focused; critical path was 1.2 → 1.3. Shipped in this order.
 ### Tests
 
 `pnpm test` runs the fast in-memory suites (60 checks). `pnpm test:sync` additionally boots a **real
-SQLite database** (sql.js in Node) against a fake remote and covers: provider semantics, the
-one-transaction write path, outbox collapse, idempotent push + replay, watermark pull,
+SQLite database** (sql.js in Node) against a fake remote (83 checks) covering: provider semantics,
+the one-transaction write path, outbox collapse, idempotent push + replay, watermark pull,
 auto-merge, conflict queueing + resolution, LWW/tie-break/delete-vs-edit policy, tombstones,
-per-step retry with cursor resume, offline behaviour, backup rotation + restore, changelog revert
-and the OTP reset flow.
+per-step retry with cursor resume, offline behaviour, backup rotation + restore, changelog revert,
+OTP reset, server-profile adoption, the permission-aware pull plan, one-denied-collection
+tolerance, thread-scoped message pull, the pending queue (list/push/discard) and run history.
+
+### Crash safety
+
+`src/app/ErrorPage.tsx` is wired as the router `errorElement`, so a render crash shows a real page
+("This page could not load" + Try again / Dashboard) instead of React's dev overlay. Because data
+lives in SQLite, a crash never loses work — the local snapshot is already flushed.
 
 ### Known follow-ups
 

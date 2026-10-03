@@ -7,7 +7,7 @@
  * sqlite.ts when the shape changes.
  */
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 export const DDL = `
 CREATE TABLE IF NOT EXISTS docs (
@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS sync_state (
   step        TEXT PRIMARY KEY,          -- plan step id
   status      TEXT NOT NULL,             -- pending | running | done | failed
   cursor      TEXT,                      -- watermark / page cursor for resume
+  detail      TEXT,                      -- human-readable note shown in Settings > Sync
   started_at  INTEGER,
   finished_at INTEGER,
   error       TEXT,
@@ -93,6 +94,22 @@ CREATE TABLE IF NOT EXISTS backups (
 );
 
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+-- one row per sync run (Settings > Sync, "synced last time" table)
+CREATE TABLE IF NOT EXISTS sync_runs (
+  id          TEXT PRIMARY KEY,           -- run id (timestamp + device suffix)
+  started_at  INTEGER NOT NULL,
+  finished_at INTEGER,
+  mode        TEXT NOT NULL,              -- full | push | pull
+  status      TEXT NOT NULL,              -- running | done | failed
+  pushed      INTEGER NOT NULL DEFAULT 0,
+  pulled      INTEGER NOT NULL DEFAULT 0,
+  conflicts   INTEGER NOT NULL DEFAULT 0,
+  failed_step TEXT,
+  error       TEXT,
+  steps_json  TEXT NOT NULL DEFAULT '[]'  -- per-step snapshot for the details view
+);
+CREATE INDEX IF NOT EXISTS sync_runs_started ON sync_runs (started_at DESC);
 `
 
 /** Sync plan groups. Order matters: dependencies first. Subcollection paths

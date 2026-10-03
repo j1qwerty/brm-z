@@ -16,11 +16,13 @@
  * transactions and Cloud Functions are out of scope, so "transactional" here
  * means ordered steps + durable checkpoints + idempotent re-runs.
  */
-import type { DataProvider } from '../data/provider'
+import type { DataProvider, WhereOp } from '../data/provider'
 import { PLAN_COLLECTIONS, PLAN_ORDER, type PlanStepId } from './schema'
 import { applyRemoteDoc, markClean, newOpId } from './localProvider'
 import { createBackup } from './backups'
 import { pruneHistory } from './changelog'
+import { buildPullPlan, type PullContext, type PullTarget } from './pullPlan'
+import { startRun, finishRun } from './queue'
 import { deviceId, flush, getDb, getJsonMeta, markDirty, setJsonMeta } from './sqlite'
 
 const PUSH_BATCH = 400
@@ -95,6 +97,7 @@ export function readSteps(): StepState[] {
     step: String(r.step) as PlanStepId,
     status: String(r.status) as StepStatus,
     cursor: r.cursor == null ? null : String(r.cursor),
+    detail: r.detail == null ? undefined : String(r.detail),
     startedAt: r.started_at == null ? null : Number(r.started_at),
     finishedAt: r.finished_at == null ? null : Number(r.finished_at),
     error: r.error == null ? null : String(r.error),
@@ -112,11 +115,11 @@ function setStep(step: PlanStepId, patch: Partial<StepState>) {
   const cur = ensureStep(step)
   const next = { ...cur, ...patch }
   run(
-    `INSERT INTO sync_state (step, status, cursor, started_at, finished_at, error, attempt) VALUES (?,?,?,?,?,?,?)
+    `INSERT INTO sync_state (step, status, cursor, detail, started_at, finished_at, error, attempt) VALUES (?,?,?,?,?,?,?,?)
      ON CONFLICT(step) DO UPDATE SET status = excluded.status, cursor = excluded.cursor,
-       started_at = excluded.started_at, finished_at = excluded.finished_at,
+       detail = excluded.detail, started_at = excluded.started_at, finished_at = excluded.finished_at,
        error = excluded.error, attempt = excluded.attempt`,
-    [step, next.status, next.cursor, next.startedAt, next.finishedAt, next.error, next.attempt],
+    [step, next.status, next.cursor, next.detail ?? null, next.startedAt, next.finishedAt, next.error, next.attempt],
   )
   emit()
 }
@@ -182,6 +185,8 @@ export interface SyncDeps {
   isOnline?: () => boolean
   /** Retry backoff; tests shorten this so the suite stays fast. */
   backoffMs?: number[]
+  /** Role/ids used to build the permission-aware pull plan. */
+  pullContext?: PullContext
 }
 
 let deps: SyncDeps | null = null
@@ -190,6 +195,27 @@ export function configureSync(d: SyncDeps) {
 }
 
 const backoff = () => deps?.backoffMs ?? BACKOFF_MS
+
+/** Who is syncing — decides which collections may be pulled (see pullPlan.ts). */
+export function setPullContext(ctx: PullContext) {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem('bmrc-sync-user', JSON.stringify(ctx))
+  setJsonMeta('pull_context', ctx)
+}
+
+function pullContext(): PullContext {
+  if (deps?.pullContext) return deps.pullContext
+  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('bmrc-sync-user') : null
+  if (stored) {
+    try {
+      return JSON.parse(stored) as PullContext
+    } catch {
+      /* fall through */
+    }
+  }
+  const persisted = getJsonMeta<PullContext | null>('pull_context', null)
+  return persisted ?? { role: 'admin', uid: '', childIds: [] }
+}
 
 export function isOnline(): boolean {
   if (deps?.isOnline) return deps.isOnline()
@@ -211,6 +237,7 @@ async function execute(options: SyncOptions): Promise<SyncProgress> {
   current = { ...current, running: true, step: null, startedAt: Date.now(), finishedAt: null, lastError: null, pushed: 0, pulled: 0, conflicts: 0, mode }
   for (const step of PLAN_ORDER) ensureStep(step)
   emit()
+  const runId = startRun(mode)
 
   try {
     if (options.onlyStep) {
@@ -223,12 +250,42 @@ async function execute(options: SyncOptions): Promise<SyncProgress> {
     }
     current = { ...current, running: false, step: null, finishedAt: Date.now() }
     emit()
+    finishRun(runId, {
+      status: 'done',
+      pushed: current.pushed,
+      pulled: current.pulled,
+      conflicts: current.conflicts,
+      failedStep: null,
+      error: null,
+      steps: snapshotSteps(),
+    })
     return syncSnapshot()
   } catch (e) {
+    const failedStep = current.step
     current = { ...current, running: false, step: null, finishedAt: Date.now(), lastError: e instanceof Error ? e.message : String(e) }
     emit()
+    finishRun(runId, {
+      status: 'failed',
+      pushed: current.pushed,
+      pulled: current.pulled,
+      conflicts: current.conflicts,
+      failedStep,
+      error: current.lastError,
+      steps: snapshotSteps(),
+    })
     return syncSnapshot()
   }
+}
+
+function snapshotSteps() {
+  return readSteps().map((s) => ({
+    step: s.step,
+    status: s.status,
+    detail: s.detail ?? undefined,
+    error: s.error,
+    attempt: s.attempt,
+    durationMs: s.startedAt && s.finishedAt ? s.finishedAt - s.startedAt : null,
+  }))
 }
 
 function planFor(mode: SyncMode): PlanStepId[] {
@@ -361,62 +418,112 @@ async function pushOutbox(step: 'push-outbox' | 'reconcile') {
 }
 
 async function pullGroup(group: keyof typeof PLAN_COLLECTIONS, options: SyncOptions) {
+  const ctx = pullContext()
+  const { targets } = buildPullPlan(ctx)
+  const planned = groupTargets(group)
   const wm = watermarks()
-  let collections: string[] = [...PLAN_COLLECTIONS[group]]
-  if (options.collections?.length) collections = collections.filter((c) => options.collections!.includes(c))
+  const scope = options.collections?.length ? planned.filter((c) => options.collections!.includes(c)) : planned
   let pulledThisGroup = 0
+  const denied: string[] = []
+  let skippedRole = 0
 
-  for (const collection of collections) {
-    if (options.signal?.aborted) throw new Error('cancelled')
-    for (;;) {
-      if (!isOnline()) throw new Error('offline')
-      const since = wm[collection] ?? 0
-      const page = await remote().list<Record<string, unknown>>(collection, {
-        where: since > 0 ? [['updatedAt', '>', since]] : undefined,
-        orderBy: ['updatedAt', 'asc'],
-        limit: PULL_PAGE,
-      })
-      if (page.length === 0) break
-      for (const doc of page) {
-        applyRemoteDoc(collection, { ...doc, id: String(doc.id ?? '') })
-        pulledThisGroup++
-        current = { ...current, pulled: current.pulled + 1 }
-      }
-      const maxUpdated = Math.max(...page.map((d) => Number(d.updatedAt ?? 0)))
-      wm[collection] = Math.max(since, maxUpdated)
-      saveWatermarks(wm)
-      setStep(group, { cursor: JSON.stringify(wm), detail: `${pulledThisGroup} doc(s) in ${collection}` })
-      emit()
-      if (page.length < PULL_PAGE) break
+  for (const name of scope) {
+    const target = targets.find((t) => t.collection === name)
+    if (!target) {
+      skippedRole++
+      continue // not readable for this role by design (permissions.ts matrix)
     }
+    if (options.signal?.aborted) throw new Error('cancelled')
+
+    try {
+      pulledThisGroup += await pullCollection(name, target, wm)
+    } catch (e) {
+      // One collection the rules reject must never fail the whole step:
+      // record it, keep going, and surface it in the step detail.
+      denied.push(`${name} (${e instanceof Error ? e.message : String(e)})`)
+    }
+    setStep(group, {
+      cursor: JSON.stringify(wm),
+      detail: `${pulledThisGroup} doc(s)${skippedRole ? `, ${skippedRole} not permitted for your role` : ''}${denied.length ? `, ${denied.length} denied` : ''}`,
+    })
+    emit()
   }
 
-  // class subjects live in subcollections discovered from the classes we just pulled
-  if (group === 'pull-sessions') await pullSubjectSubcollections(wm, options)
+  // class subjects live in subcollections discovered from the classes we pulled
+  if (group === 'pull-sessions') await pullSubjectSubcollections(wm)
 
-  setStep(group, { cursor: JSON.stringify(wm), detail: `${pulledThisGroup} doc(s)` })
+  setStep(group, {
+    cursor: JSON.stringify(wm),
+    detail: denied.length
+      ? `${pulledThisGroup} doc(s) pulled · not readable: ${denied.join(', ')}`
+      : `${pulledThisGroup} doc(s) pulled${skippedRole ? ` · ${skippedRole} collection(s) skipped for your role` : ''}`,
+  })
 }
 
-async function pullSubjectSubcollections(wm: Watermarks, options: SyncOptions) {
+function groupTargets(group: keyof typeof PLAN_COLLECTIONS): string[] {
+  return [...PLAN_COLLECTIONS[group]]
+}
+
+async function pullCollection(name: string, target: PullTarget, wm: Watermarks): Promise<number> {
+  if (target.fanout) {
+    const parents = await remote().list<Record<string, unknown>>(target.fanout.collection)
+    let n = 0
+    for (const value of target.fanout.values(parents)) {
+      n += await pullPaged(name, wm, [[target.fanout.whereField, '==', value]])
+    }
+    return n
+  }
+  if (name === 'messages') return pullMessages(wm)
+  return pullPaged(name, wm, target.where)
+}
+
+async function pullPaged(collection: string, wm: Watermarks, base: [string, WhereOp, unknown][] | undefined): Promise<number> {
+  let pulled = 0
+  for (;;) {
+    if (!isOnline()) throw new Error('offline')
+    const since = wm[collection] ?? 0
+    const where = [...(base ?? []), ...(since > 0 ? ([['updatedAt', '>', since]] as [string, WhereOp, unknown][]) : [])]
+    const page = await remote().list<Record<string, unknown>>(collection, {
+      where: where.length ? where : undefined,
+      orderBy: ['updatedAt', 'asc'],
+      limit: PULL_PAGE,
+    })
+    if (page.length === 0) break
+    for (const doc of page) {
+      applyRemoteDoc(collection, { ...doc, id: String(doc.id ?? '') })
+      pulled++
+    }
+    current = { ...current, pulled: current.pulled + page.length }
+    const maxUpdated = Math.max(...page.map((d) => Number(d.updatedAt ?? 0)))
+    wm[collection] = Math.max(since, maxUpdated)
+    saveWatermarks(wm)
+    if (page.length < PULL_PAGE) break
+  }
+  return pulled
+}
+
+/**
+ * Messages: `inThread()` splits threadId on '_', which no query filter can
+ * reproduce. So we learn the user's thread ids from the messages they sent, then
+ * pull each thread explicitly.
+ */
+async function pullMessages(wm: Watermarks): Promise<number> {
+  const ctx = pullContext()
+  if (!ctx.uid) return 0
+  const mineOnes = await remote().list<Record<string, unknown>>('messages', { where: [['senderId', '==', ctx.uid]] })
+  const threadIds = [...new Set(mineOnes.map((m) => String(m.threadId ?? '')).filter(Boolean))]
+  let pulled = 0
+  for (const threadId of threadIds) {
+    pulled += await pullPaged('messages', wm, [['threadId', '==', threadId]])
+  }
+  return pulled
+}
+
+async function pullSubjectSubcollections(wm: Watermarks) {
   const classes = await remote().list<{ id: string }>('classes')
   for (const cls of classes) {
     const path = `classes/${cls.id}/subjects`
-    const key = `sub:${path}`
-    const since = wm[key] ?? 0
-    for (;;) {
-      const page = await remote().list<Record<string, unknown>>(path, {
-        where: since > 0 ? [['updatedAt', '>', since]] : undefined,
-        orderBy: ['updatedAt', 'asc'],
-        limit: PULL_PAGE,
-      })
-      if (page.length === 0) break
-      for (const doc of page) applyRemoteDoc(path, { ...doc, id: String(doc.id ?? '') })
-      const maxUpdated = Math.max(...page.map((d) => Number(d.updatedAt ?? 0)))
-      wm[key] = Math.max(since, maxUpdated)
-      saveWatermarks(wm)
-      if (page.length < PULL_PAGE) break
-    }
-    void options
+    await pullPaged(path, wm, undefined)
   }
 }
 

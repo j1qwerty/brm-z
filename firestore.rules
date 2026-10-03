@@ -245,10 +245,14 @@ service cloud.firestore {
 
     // ---------- notices ----------
     match /notices/{id} {
+      // Any active user may pull LIVE notices with `where('status','==','live')`
+      // (the offline sync does exactly that). Role/class targeting is applied
+      // in the UI (NoticeBoard), because Firestore cannot prove an OR-condition
+      // across audience.type for a plain query.
       function audienceIncludes() {
         return resource.data.audience.type == 'all'
-          || (resource.data.audience.type == 'roles' && role() in resource.data.audience.value)
-          || (isParent() && resource.data.audience.type == 'classes' && myChildIds().size() > 0);
+          || resource.data.audience.type == 'classes'
+          || (resource.data.audience.type == 'roles' && role() in resource.data.audience.value);
       }
       allow read: if (isAdmin() || isTeacher())
         || (isActiveUser() && resource.data.status == 'live' && audienceIncludes());

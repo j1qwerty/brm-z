@@ -465,6 +465,7 @@ function groupTargets(group: keyof typeof PLAN_COLLECTIONS): string[] {
 }
 
 async function pullCollection(name: string, target: PullTarget, wm: Watermarks): Promise<number> {
+  if (target.byIds) return pullByIds(name, target.byIds)
   if (target.fanout) {
     const parents = await remote().list<Record<string, unknown>>(target.fanout.collection)
     let n = 0
@@ -475,6 +476,31 @@ async function pullCollection(name: string, target: PullTarget, wm: Watermarks):
   }
   if (name === 'messages') return pullMessages(wm)
   return pullPaged(name, wm, target.where)
+}
+
+/**
+ * Fetch specific documents with `get`, one at a time.
+ *
+ * Used where the rules permit a document read but not a list (a student's own
+ * profile, a parent's children). A `documentId() in [...]` query would be
+ * filtered further by the `updatedAt` watermark and sorted by it too, which
+ * needs a composite index; `get` needs none.
+ *
+ * These documents are re-read on every sync rather than watermark-paged: the
+ * list is tiny and bounded by what the account is allowed to see, and a missing
+ * child must not depend on the watermark having moved.
+ */
+async function pullByIds(collection: string, ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0
+  if (!isOnline()) throw new Error('offline')
+  let pulled = 0
+  for (const id of ids) {
+    const doc = await remote().get<Record<string, unknown>>(collection, id)
+    if (!doc) continue
+    applyRemoteDoc(collection, { ...doc, id: String(doc.id ?? id) })
+    pulled++
+  }
+  return pulled
 }
 
 async function pullPaged(collection: string, wm: Watermarks, base: [string, WhereOp, unknown][] | undefined): Promise<number> {

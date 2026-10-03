@@ -50,6 +50,7 @@ Netlify hosts the static build; Firestore Security Rules are the authorization l
 | `pnpm test` | Run all in-memory CRUD suites (sessions, classes, subjects, students, staff, teachers, templates, users, generation, integration). Prints pass/fail summary, exits 1 on failure. Pure in-memory, no Firebase/DOM needed. |
 | `pnpm test:sync` | Offline-first suite on a REAL SQLite DB (sql.js in Node) + fake remote: one-transaction writes, outbox, idempotent push, watermark pull, auto-merge + conflict queue, LWW policy, step retry/resume, backups, revert, OTP reset. |
 | `pnpm test:live` | Real Firestore test, ~66 checks, all ids prefixed `tst-` (see `pnpm test-reset`) |
+| `pnpm test:portal` | Real rule checks signed in as the seeded parent/student via the CLIENT SDK (7 checks): own/child `get` allowed, others denied, `list` denied |
 | `pnpm db:seed` | Seed the real Firebase project with demo school data (needs service account) |
 | `pnpm db:reset` | Wipe all collections (interactive confirm) |
 | `pnpm users:create` | Create Auth user + users doc: `--email --password --name --role` |

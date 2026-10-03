@@ -577,6 +577,34 @@ export function syncSuite() {
       })
 
       tests.push({
+        name: 'student and parent pull their own student docs by id, never a list',
+        run: (t) => {
+          // The rules allow `get` on a student's own doc and a parent's children,
+          // but not `list` on students. Without these rows the portal renders
+          // "profile not linked" even though permissions are fine.
+          const student = buildPullPlan({ role: 'student', uid: 'u5', studentId: 's1' })
+          const mine = student.targets.find((x) => x.collection === 'students')
+          t.truthy(mine?.byIds?.join(',') === 's1', "a student pulls exactly their own profile")
+          t.falsy(mine?.where, 'and does it with get, not a filtered list')
+
+          const parentStudents = buildPullPlan({ role: 'parent', uid: 'u6', childIds: ['s1', 's2'] })
+            .targets.find((x) => x.collection === 'students')
+          t.truthy(parentStudents?.byIds?.join(',') === 's1,s2', 'a parent pulls exactly their children')
+          t.falsy(parentStudents?.where, 'and does it with get, not a filtered list')
+
+          // Unlinked accounts must not fall back to a full list, which the rules
+          // would reject (and which would be a data leak if they allowed it).
+          const orphanParent = buildPullPlan({ role: 'parent', uid: 'u7', childIds: [] }).targets.find(
+            (x) => x.collection === 'students',
+          )
+          t.truthy((orphanParent?.byIds ?? []).length === 0, 'an unlinked parent pulls nothing')
+
+          const orphanStudent = buildPullPlan({ role: 'student', uid: 'u8' }).targets.find((x) => x.collection === 'students')
+          t.truthy((orphanStudent?.byIds ?? []).length === 0, 'a student with no studentId pulls nothing')
+        },
+      })
+
+      tests.push({
         name: 'a denied collection does not fail the whole pull step',
         run: async (t: AssertAPI) => {
           resetLocalDb()

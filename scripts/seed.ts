@@ -26,12 +26,45 @@ const db = admin.firestore()
 const ts = Date.now()
 const base = { createdAt: ts, updatedAt: ts, deletedAt: null, deletedBy: null }
 
-const DEMO_USERS = [
+/**
+ * Demo accounts. `studentId` / `childIds` are what the offline sync uses to
+ * scope a pull: a student may only `get` their own student doc, a parent only
+ * their children (firestore.rules `isStudent()` / `isMyChild()`).
+ */
+const DEMO_USERS: {
+  email: string
+  name: string
+  role: string
+  studentId?: string
+  childIds?: string[]
+}[] = [
   { email: 'admin@bmrc.demo', name: 'Ramesh Gupta', role: 'admin' },
   { email: 'teacher@bmrc.demo', name: 'Sunita Sharma', role: 'teacher' },
   { email: 'accountant@bmrc.demo', name: 'Prakash Rao', role: 'accountant' },
   { email: 'staff@bmrc.demo', name: 'Venkatesh Yadav', role: 'staff' },
-  { email: 'parent@bmrc.demo', name: 'Meera Sharma', role: 'parent' },
+  { email: 'parent@bmrc.demo', name: 'Meera Sharma', role: 'parent', childIds: ['stu-101', 'stu-102'] },
+  { email: 'student@bmrc.demo', name: 'Aarav Sharma', role: 'student', studentId: 'stu-101' },
+]
+
+/**
+ * Three students, deliberately shaped to test the portals:
+ *   stu-101 / stu-102  siblings in Class 10-A (exercises the parent's child switcher)
+ *   stu-201            in a DIFFERENT class, not linked to the parent, so a rules
+ *                      regression that leaks the whole roll is visible at a glance
+ */
+const DEMO_STUDENTS: {
+  id: string
+  name: string
+  classId: string
+  section: string
+  rollNo: number
+  dob: string
+  gender: 'male' | 'female'
+  linkedParent?: string
+}[] = [
+  { id: 'stu-101', name: 'Aarav Sharma', classId: 'c-10', section: 'A', rollNo: 12, dob: '2011-04-18', gender: 'male', linkedParent: 'parent@bmrc.demo' },
+  { id: 'stu-102', name: 'Diya Sharma', classId: 'c-10', section: 'A', rollNo: 13, dob: '2012-09-02', gender: 'female', linkedParent: 'parent@bmrc.demo' },
+  { id: 'stu-201', name: 'Kabir Nair', classId: 'c-5', section: 'A', rollNo: 7, dob: '2016-01-25', gender: 'male' },
 ]
 
 const DEMO_PASSWORD = 'Bmrc@2026'
@@ -68,12 +101,36 @@ async function main() {
     }
     await db.collection('users').doc(user.uid).set({
       ...base, id: user.uid, name: u.name, email: u.email, role: u.role, status: 'active',
+      ...(u.studentId ? { studentId: u.studentId } : {}),
+      ...(u.childIds ? { childIds: u.childIds } : {}),
     }, { merge: true })
     console.log(`  user ${u.email} (${u.role}) uid=${user.uid}`)
   }
 
   // session
   await upsert('sessions', 'sess-2627', { name: '2026-2027', startDate: '2026-04-01', endDate: '2027-03-31', isActive: true, isCompleted: false })
+
+  // students — the parent/student portals read these (see DEMO_STUDENTS)
+  for (const s of DEMO_STUDENTS) {
+    await upsert('students', s.id, {
+      name: s.name,
+      admissionNo: `ADM-${s.id.slice(-3)}`,
+      classId: s.classId,
+      section: s.section,
+      rollNo: String(s.rollNo),
+      dob: s.dob,
+      gender: s.gender,
+      bloodGroup: s.gender === 'male' ? 'B+' : 'O+',
+      guardianName: s.linkedParent ? 'Meera Sharma' : 'Rohit Nair',
+      guardianPhone: s.linkedParent ? '+91 98480 55555' : '+91 98480 77777',
+      // Only the demo student signs in with Google, so only they have one.
+      ...(s.id === 'stu-101' ? { loginEmail: 'student@bmrc.demo' } : {}),
+      status: 'active',
+      admissionDate: '2026-04-06',
+      photoUrl: `https://i.pravatar.cc/150?img=${10 + s.rollNo}`,
+    })
+  }
+  console.log(`  students ${DEMO_STUDENTS.map((s) => s.id).join(', ')}`)
 
   // classes
   const classDefs: [string, string, string[], number][] = [

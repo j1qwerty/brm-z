@@ -81,6 +81,7 @@ See [Desktop app (Electron)](#desktop-app-electron) for the full build and packa
 | `pnpm test` | run tests (fast, in-memory — no Firebase, no network) |
 | `pnpm test:sync` | offline-first/sync suite on a REAL SQLite database (sql.js in Node) + fake remote: outbox, pull, conflicts, checkpoints, backups, revert, OTP reset |
 | `pnpm test:live` | REAL tests against real Firestore: 2 sessions, Classes 1-10 (A+B), 60 students, parents, attendance, timetable, fees, exams/marks — all ids prefixed `tst-` (needs service account key) |
+| `pnpm test:portal` | REAL rule checks as the seeded parent/student (client SDK, so rules are enforced): linked children readable, unlinked students not, and `list` denied — the reason the pull plan fetches students by id |
 | `pnpm test-reset` | Delete ONLY `tst-` test docs from real Firestore (real school data untouched) |
 | `pnpm db:seed` | Seed real Firebase with demo school data (needs service account key) |
 | `pnpm db:reset` | Wipe all collections (asks you to type DELETE) |
@@ -135,9 +136,12 @@ works offline; a banner reminds you it is local-only.
 | Accountant | accountant@bmrc.demo | Bmrc@2026 |
 | Staff | staff@bmrc.demo | Bmrc@2026 |
 | Parent | parent@bmrc.demo | Bmrc@2026 |
+| Student | student@bmrc.demo | Bmrc@2026 |
 
-   (Parents sign up themselves in real usage; this seeded parent is pre-linked to two children
-   for testing.) Prefer real emails? `pnpm users:create -- --email you@school.in --password "Strong!" --name "Your Name" --role admin`.
+   (Parents and students sign up themselves in real usage; the seeded ones are pre-linked for
+   testing — the parent to two siblings in Class 10-A, the student to `stu-101`. A third student
+   sits in Class 5-A deliberately unlinked, so a rules regression that leaks the whole roll is
+   visible.) Prefer real emails? `pnpm users:create -- --email you@school.in --password "Strong!" --name "Your Name" --role admin`.
 7. `pnpm dev` - the demo banner disappears once Firebase env vars are detected.
 
 ## Offline-first sync

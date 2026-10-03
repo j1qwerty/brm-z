@@ -11,6 +11,11 @@
  *   - filtered   : `list(where [...])` whose filter guarantees the rule
  *   - per-parent : fan out one filtered query per parent doc (e.g. marks per
  *                  published exam, certificates per student)
+ *   - byIds      : fetch specific documents with `get` (e.g. a student's own
+ *                  profile, a parent's children). Preferred over a
+ *                  `documentId() in [...]` list, which would be combined with
+ *                  the `updatedAt` watermark and `orderBy` and so demand a
+ *                  composite index that does not exist.
  *   - skip       : this role may read it, but not via a list query (the UI
  *                  reads it scoped, e.g. one record at a time)
  */
@@ -22,6 +27,8 @@ export interface PullTarget {
   where?: [string, WhereOp, unknown][]
   /** Fan out: one query per value of this field across the given parent collection. */
   fanout?: { collection: string; whereField: string; values: (docs: Record<string, unknown>[]) => string[] }
+  /** Read exactly these document ids, one `get` each (no index required). */
+  byIds?: string[]
 }
 
 export interface PullContext {
@@ -114,6 +121,10 @@ export function buildPullPlan(ctx: PullContext): { targets: PullTarget[]; skippe
     case 'student': {
       const id = ctx.studentId
       targets.push(
+        // The student's OWN profile. `get` on it is allowed by the rules, but
+        // `list` is not — and without this row the portal has nothing to render
+        // and shows "Student profile not linked".
+        { collection: 'students', byIds: id ? [id] : [] },
         { collection: 'notices', where: [['status', '==', 'live']] },
         { collection: 'exams', where: [['status', '==', 'published']] },
         // marks are only visible when the parent exam is published -> fan out per exam
@@ -146,6 +157,9 @@ export function buildPullPlan(ctx: PullContext): { targets: PullTarget[]; skippe
       const ownerIn: [string, WhereOp, unknown][] = kids.length ? [['ownerId', 'in', kids]] : [['ownerId', '==', '__none__']]
       const personIn: [string, WhereOp, unknown][] = kids.length ? [['personId', 'in', kids]] : [['personId', '==', '__none__']]
       targets.push(
+        // Only the linked children — never the whole roll. `get` per child is
+        // permitted by `isMyChild(id)`; `list` on students is not.
+        { collection: 'students', byIds: kids },
         { collection: 'notices', where: [['status', '==', 'live']] },
         { collection: 'exams', where: [['status', '==', 'published']] },
         {

@@ -27,6 +27,7 @@ const FIREBASE_TEST_ACCOUNTS: { role: Role; email: string; password: string }[] 
   { role: 'accountant', email: 'accountant@bmrc.demo', password: 'Bmrc@2026' },
   { role: 'staff', email: 'staff@bmrc.demo', password: 'Bmrc@2026' },
   { role: 'parent', email: 'parent@bmrc.demo', password: 'Bmrc@2026' },
+  { role: 'student', email: 'student@bmrc.demo', password: 'Bmrc@2026' },
 ]
 
 export default function LoginPage() {

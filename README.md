@@ -109,7 +109,10 @@ works offline; a banner reminds you it is local-only.
    - Firestore Database → Create database (production mode)
    - Authentication → Settings → Authorized domains → add `localhost` and your Netlify domain
 3. Copy `.env.example` → `.env.local` and fill the six `VITE_FIREBASE_*` values
-   (Project settings → General → Your apps → Web app config).
+   (Project settings → General → Your apps → Web app config). Keep
+   `VITE_APP_ENV=development` locally; set it to `production` for the live
+   site (production enforces exactly one active session, development allows
+   several for testing).
 4. `pnpm rules:deploy` - deploys `firestore.rules` and `firestore.indexes.json`.
 5. **Service account key** (for the local scripts): Project settings → Service accounts →
    Generate new private key → save as `scripts/service-account.json` (already gitignored).
@@ -204,6 +207,34 @@ Notes:
   so re-runs are idempotent.
 - `pnpm test:live` uses firebase-admin, which bypasses Security Rules (same as seeding).
   Rule enforcement itself is covered by `pnpm rules:test` on the emulator.
+
+## Sessions, environments & data scoping
+
+- The top-bar session switcher drives every session-scoped page: fees (assignments,
+  invoices, payments, records), exams, attendance registers and the timetable all
+  filter by the selected session, and new records are written with that session id.
+  Attendance doc ids include the session, so the same class/date in two sessions
+  never overwrites each other.
+- `VITE_APP_ENV=production` enforces exactly one active session (activating one
+  deactivates the rest). `development` allows several active sessions for testing.
+  Any session (active or not) can be soft-deleted from the Sessions page.
+- Invoice generation is idempotent and never touches existing invoices: re-running
+  (auto on month-open, the one-click button, or the custom dialog for one fee type /
+  one class / hand-picked students / any month) only creates missing invoices, so
+  collected amounts can never be reset.
+- Timetable periods are per class-section: Mon-Fri and Saturday counts are set with
+  the steppers above the grid (e.g. 8 vs 6, short Saturdays). Columns past a day's
+  count render as "end".
+- Notifications fan out automatically: publishing a notice notifies its audience,
+  scheduled notices notify on the auto-flip, calendar events notify all active users,
+  absence saves notify parents, exam publishes notify everyone, PTM creation notifies
+  parents and bookings notify the teacher.
+- Google sign-in Gmail binding: users link a Gmail from the complete-profile screen
+  (students via the Login Gmail field on their record, set by themselves or the
+  class-teacher); admins approve/reject/set linked Gmails in User Accounts.
+- Certificates pick their design from Templates (kind `certificate`), with one
+  default per certificate type (TC / bonafide / character); the template designer
+  opens full-screen.
 
 ## Theme customization
 

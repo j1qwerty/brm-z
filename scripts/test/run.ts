@@ -18,6 +18,8 @@ import { sessionsSuite } from './sessions.test'
 import { classesSuite } from './classes.test'
 import { studentsSuite } from './students.test'
 import { staffSuite } from './staff.test'
+import { usersSuite } from './users.test'
+import { generationSuite } from './generation.test'
 import { templatesSuite } from './templates.test'
 import { integrationSuite } from './integration.test'
 
@@ -35,6 +37,8 @@ async function main() {
     classesSuite(),
     studentsSuite(),
     staffSuite(),
+    usersSuite(),
+    generationSuite(),
     templatesSuite(),
     integrationSuite(),
   ]

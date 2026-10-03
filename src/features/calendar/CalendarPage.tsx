@@ -9,7 +9,8 @@ import { SheetContent, Sheet as SheetRoot } from '@/components/ui/dialog'
 import { useList, useCreate, useUpdate, useSoftDelete } from '@/lib/data/hooks'
 import { useAuth } from '@/lib/auth'
 import { can } from '@/lib/permissions'
-import type { CalendarEventDoc, ClassDoc, ExamDoc, PtmDoc } from '@/lib/types'
+import { notifyMany } from '@/lib/notify'
+import type { CalendarEventDoc, ClassDoc, ExamDoc, PtmDoc, UserDoc } from '@/lib/types'
 import { cn, fmtDate } from '@/lib/utils'
 
 const typeVariant = (t: CalendarEventDoc['type']) =>
@@ -28,6 +29,7 @@ function EventSheet({
 }) {
   const create = useCreate('calendarEvents')
   const update = useUpdate('calendarEvents')
+  const { data: users } = useList<UserDoc>('users')
   const [date, setDate] = useState(edit?.date ?? defaultDate)
   const [type, setType] = useState<CalendarEventDoc['type']>(edit?.type ?? 'event')
   const [title, setTitle] = useState(edit?.title ?? '')
@@ -42,8 +44,11 @@ function EventSheet({
       await update.mutateAsync({ id: edit.id, data: { date, type, title: title.trim(), description } })
     } else {
       await create.mutateAsync({ data: { date, type, title: title.trim(), description } })
+      // Everyone sees the calendar, so every active user gets a notification.
+      const ids = (users ?? []).filter((u) => u.status === 'active').map((u) => u.id)
+      await notifyMany(ids, title.trim(), `${type === 'holiday' ? 'Holiday' : 'New event'} on ${date}${description ? ` - ${description.slice(0, 80)}` : ''}`, '/calendar')
     }
-    toast.success(edit ? 'Event updated' : 'Event added')
+    toast.success(edit ? 'Event updated' : 'Event added', { description: edit ? undefined : 'All active users were notified.' })
     onOpenChange(false)
   }
 
@@ -211,7 +216,7 @@ export default function CalendarPage() {
                       <p className="text-xs tabular text-muted-foreground">{fmtDate(e.date)}</p>
                     </div>
                     <Badge variant={typeVariant(e.type)}>{e.type}</Badge>
-                    {manager && e.id.startsWith('cal-') && (
+                    {manager && !e.id.startsWith('exam-') && !e.id.startsWith('ptm-') && (
                       <button className="opacity-0 transition-opacity group-hover:opacity-100" aria-label="Delete event" onClick={() => softDelete.mutate({ id: e.id, by: user?.id })}>
                         <Trash2 className="size-3.5 text-danger" />
                       </button>

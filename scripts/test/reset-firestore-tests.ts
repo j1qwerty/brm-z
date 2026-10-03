@@ -38,9 +38,9 @@ const COLLECTIONS = [
   'calendarEvents', 'runHistory',
 ]
 
-async function deletePrefixed(colPath: string): Promise<number> {
+async function deletePrefixed(colPath: string, onlyPrefix = true): Promise<number> {
   const refs = await db.collection(colPath).listDocuments()
-  const targets = refs.filter((r) => r.id.startsWith(P))
+  const targets = onlyPrefix ? refs.filter((r) => r.id.startsWith(P)) : refs
   for (let i = 0; i < targets.length; i += 450) {
     const batch = db.batch()
     for (const ref of targets.slice(i, i + 450)) batch.delete(ref)
@@ -49,8 +49,22 @@ async function deletePrefixed(colPath: string): Promise<number> {
   return targets.length
 }
 
-async function run() {
+async function sweepOnce(): Promise<number> {
   let total = 0
+  // Subcollections FIRST: deleting a class doc leaves its subjects behind,
+  // and Firestore keeps listing the now-empty parent as a phantom, so a
+  // classes-first order can never converge.
+  const classRefs = await db.collection('classes').listDocuments()
+  for (const cref of classRefs.filter((r) => r.id.startsWith(P))) {
+    // Whole subcollection: the parent class is test data, so EVERYTHING under
+    // it is test data — including random-id docs the app itself created while
+    // the test class was visible in the UI (subjects use auto ids).
+    const n = await deletePrefixed(`${cref.path}/subjects`, false)
+    if (n > 0) {
+      console.log(`  ${cref.path}/subjects: ${n} test doc(s) deleted`)
+      total += n
+    }
+  }
   for (const col of COLLECTIONS) {
     const n = await deletePrefixed(col)
     if (n > 0) {
@@ -58,14 +72,18 @@ async function run() {
       total += n
     }
   }
-  // class subjects subcollections (only under test classes)
-  const classRefs = await db.collection('classes').listDocuments()
-  for (const cref of classRefs.filter((r) => r.id.startsWith(P))) {
-    const n = await deletePrefixed(`${cref.path}/subjects`)
-    if (n > 0) {
-      console.log(`  ${cref.path}/subjects: ${n} test doc(s) deleted`)
-      total += n
-    }
+  return total
+}
+
+async function run() {
+  // Repeat until a sweep finds nothing (covers phantom parents and
+  // listDocuments eventual consistency). Bounded so it always terminates.
+  let total = 0
+  for (let pass = 1; pass <= 3; pass++) {
+    const n = await sweepOnce()
+    total += n
+    if (n === 0) break
+    if (pass === 3) console.log('  (stopped after 3 passes — re-run if anything remains)')
   }
   console.log(total === 0 ? '\nNo test data found (nothing with the "tst-" prefix).' : `\nTest reset complete: ${total} doc(s) removed. Real data untouched.`)
 }

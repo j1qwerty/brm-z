@@ -22,6 +22,10 @@ export interface UserDoc extends BaseDoc {
   studentId?: string // for student role
   staffId?: string // for teacher/staff roles
   childIds?: string[] // for parent role (multi-child)
+  /** Gmail the user wants to sign in with via Google. Set by the user (or by
+   *  admin / class-teacher on their behalf); must be approved before it counts. */
+  linkedGmail?: string
+  gmailStatus?: 'pending' | 'approved' | 'rejected'
 }
 
 export interface SessionDoc extends BaseDoc {
@@ -69,6 +73,9 @@ export interface StudentDoc extends BaseDoc {
   photoUrl?: string
   guardianName?: string
   guardianPhone?: string
+  /** Gmail the student will use for Google sign-in. Set by the student or
+   *  their class-teacher; the linked user account still needs approval. */
+  loginEmail?: string
   parentUserId?: string
   status: 'active' | 'graduated' | 'transferred' | 'left'
   tcSerial?: string
@@ -210,6 +217,18 @@ export interface TemplateDoc extends BaseDoc {
   layoutJson: { page: { w: number; h: number }; elements: TemplateElement[] }
   images: { logo?: string; background?: string; extra1?: string }
   isDefault: boolean
+  /** For kind === 'certificate': which certificate type this template is the
+   *  design for. Lets each of TC / bonafide / character have its own default. */
+  certType?: 'tc' | 'bonafide' | 'character'
+}
+
+export interface TimetableConfigDoc extends BaseDoc {
+  classId: string
+  section: string
+  /** Periods Mon-Fri */
+  weekdayPeriods: number
+  /** Periods on Saturday (day 6). Days past the count render as "day over". */
+  saturdayPeriods: number
 }
 
 export interface CertificateDoc extends BaseDoc {
@@ -328,7 +347,7 @@ export const COLLECTIONS = [
   'users', 'sessions', 'classes', 'assignments', 'students', 'staff', 'attendance',
   'feeTypes', 'feeAssignments', 'invoices', 'payments', 'exams', 'marks',
   'gradingScales', 'reportCards', 'templates', 'certificates', 'notices',
-  'notifications', 'timetable', 'leaves', 'documents', 'ptms', 'messages',
+  'notifications', 'timetable', 'timetableConfig', 'leaves', 'documents', 'ptms', 'messages',
   'calendarEvents', 'runHistory',
 ] as const
 

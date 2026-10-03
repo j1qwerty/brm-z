@@ -15,6 +15,7 @@ import { Checkbox } from '@/components/ui/toggle'
 import { SheetContent, Sheet as SheetRoot } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { useList, useCreate, useUpdate, useSoftDelete, useBulkWrite } from '@/lib/data/hooks'
+import { useSessionScope } from '@/app/AppShell'
 import { useAuth } from '@/lib/auth'
 import { notify } from '@/lib/notify'
 import type { ClassDoc, FeeAssignmentDoc, FeeTypeDoc, InvoiceDoc, PaymentDoc, SessionDoc, StudentDoc, UserDoc } from '@/lib/types'
@@ -124,9 +125,12 @@ function FeeTypesTab() {
 
 // ---------------- Assignments ----------------
 
-function AssignmentsTab({ classes, feeTypes }: { classes: ClassDoc[]; feeTypes: FeeTypeDoc[] }) {
+function AssignmentsTab({ classes, feeTypes, sessionId }: { classes: ClassDoc[]; feeTypes: FeeTypeDoc[]; sessionId: string }) {
   const { user } = useAuth()
-  const { data: assignments, isLoading } = useList<FeeAssignmentDoc>('feeAssignments')
+  const { data: assignments, isLoading } = useList<FeeAssignmentDoc>(
+    'feeAssignments',
+    sessionId ? { where: [['sessionId', '==', sessionId]] } : undefined,
+  )
   const create = useCreate('feeAssignments')
   const softDelete = useSoftDelete('feeAssignments')
   const [feeTypeId, setFeeTypeId] = useState('')
@@ -140,7 +144,11 @@ function AssignmentsTab({ classes, feeTypes }: { classes: ClassDoc[]; feeTypes: 
       toast.error('Pick a fee type, target and amount')
       return
     }
-    await create.mutateAsync({ data: { feeTypeId, targetType, targetId, amount, sessionId: 'sess-current' } })
+    if (!sessionId) {
+      toast.error('No session selected', { description: 'Pick a session in the top bar first.' })
+      return
+    }
+    await create.mutateAsync({ data: { feeTypeId, targetType, targetId, amount, sessionId } })
     toast.success('Fee assigned', { description: 'Invoices are created automatically when the period opens.' })
     setTargetId('')
     setAmount(0)
@@ -236,22 +244,156 @@ function AssignmentsTab({ classes, feeTypes }: { classes: ClassDoc[]; feeTypes: 
 
 // ---------------- Invoices ----------------
 
-function InvoicesTab({ students, classes }: { students: StudentDoc[]; classes: ClassDoc[] }) {
+function GenerateInvoicesDialog({
+  open,
+  onOpenChange,
+  students,
+  classes,
+  session,
+  onDone,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  students: StudentDoc[]
+  classes: ClassDoc[]
+  session: SessionDoc | null | undefined
+  onDone: () => void
+}) {
+  const { data: feeTypes } = useList<FeeTypeDoc>('feeTypes')
+  const [feeTypeId, setFeeTypeId] = useState('all')
+  const [mode, setMode] = useState<'all' | 'class' | 'students'>('all')
+  const [classId, setClassId] = useState('')
+  const [picked, setPicked] = useState<string[]>([])
+  const [search, setSearch] = useState('')
+  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
+  const [busy, setBusy] = useState(false)
+
+  const candidates = (students ?? []).filter((s) => s.status === 'active')
+  const shown = candidates.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()) || s.admissionNo.toLowerCase().includes(search.toLowerCase())).slice(0, 60)
+
+  const run = async () => {
+    if (!session) {
+      toast.error('No session selected', { description: 'Pick a session in the top bar first.' })
+      return
+    }
+    if (mode === 'class' && !classId) {
+      toast.error('Pick a class')
+      return
+    }
+    if (mode === 'students' && picked.length === 0) {
+      toast.error('Tick at least one student')
+      return
+    }
+    setBusy(true)
+    try {
+      const { generateInvoicesForPeriod } = await import('@/lib/generate-on-open')
+      const studentIds =
+        mode === 'all' ? undefined : mode === 'class' ? candidates.filter((s) => s.classId === classId).map((s) => s.id) : picked
+      const n = await generateInvoicesForPeriod(session, new Date(`${period}-01T00:00:00`), {
+        feeTypeId: feeTypeId === 'all' ? undefined : feeTypeId,
+        studentIds,
+        periodKey: period,
+      })
+      onDone()
+      toast.success(n ? `Generated ${n} new invoices for ${monthLabel(period)}` : 'Nothing new to generate', {
+        description: 'Existing invoices (paid or not) are never touched - re-runs are safe.',
+      })
+      onOpenChange(false)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Generation failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <SheetRoot open={open} onOpenChange={onOpenChange}>
+      <SheetContent title="Generate invoices" description="Monthly uses the chosen month; quarterly/half-yearly only bill in their start months; yearly bills in April; one-time always bills. Existing invoices are skipped, never duplicated or reset.">
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Fee type</Label>
+            <Select value={feeTypeId} onValueChange={setFeeTypeId}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All assigned types</SelectItem>
+                {(feeTypes ?? []).map((f) => <SelectItem key={f.id} value={f.id}>{f.name} ({f.frequency})</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Bill whom</Label>
+            <Select value={mode} onValueChange={(v) => setMode(v as 'all' | 'class' | 'students')}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All students</SelectItem>
+                <SelectItem value="class">One class</SelectItem>
+                <SelectItem value="students">Select students</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {mode === 'class' && (
+            <div className="space-y-1.5">
+              <Label>Class</Label>
+              <Select value={classId} onValueChange={setClassId}>
+                <SelectTrigger><SelectValue placeholder="Pick class" /></SelectTrigger>
+                <SelectContent>
+                  {(classes ?? []).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {mode === 'students' && (
+            <div className="space-y-1.5">
+              <Label>Students ({picked.length} picked)</Label>
+              <Input placeholder="Search name or admission no..." value={search} onChange={(e) => setSearch(e.target.value)} />
+              <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+                {shown.map((s) => (
+                  <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
+                    <Checkbox
+                      checked={picked.includes(s.id)}
+                      onCheckedChange={(c) => setPicked((p) => (c ? [...p, s.id] : p.filter((x) => x !== s.id)))}
+                    />
+                    <span className="flex-1 truncate">{s.name}</span>
+                    <span className="text-xs text-muted-foreground tabular">{s.admissionNo}</span>
+                  </label>
+                ))}
+                {shown.length === 0 && <p className="p-2 text-xs text-muted-foreground">No matches.</p>}
+              </div>
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label>Period (month)</Label>
+            <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
+          </div>
+          <Button className="w-full" onClick={run} disabled={busy}>{busy ? 'Generating...' : 'Generate invoices'}</Button>
+        </div>
+      </SheetContent>
+    </SheetRoot>
+  )
+}
+
+function InvoicesTab({ students, classes, sessionId }: { students: StudentDoc[]; classes: ClassDoc[]; sessionId: string }) {
   const { user } = useAuth()
-  const { data: invoices, isLoading, refetch } = useList<InvoiceDoc>('invoices', { orderBy: ['createdAt', 'desc'] })
   const { data: sessions } = useList<SessionDoc>('sessions')
+  // where-only server query (single-field: no composite index needed);
+  // newest-first sort happens client-side for the same reason.
+  const { data: invoices, isLoading, refetch } = useList<InvoiceDoc>(
+    'invoices',
+    sessionId ? { where: [['sessionId', '==', sessionId]] } : undefined,
+  )
   const update = useUpdate('invoices')
   const softDelete = useSoftDelete('invoices')
   const [filters, setFilters] = useState<Record<string, string>>({})
   const [waiveTarget, setWaiveTarget] = useState<InvoiceDoc | null>(null)
-  const activeSession = sessions?.find((s) => s.isActive)
+  const activeSession = sessions?.find((s) => s.id === sessionId)
   const [generating, setGenerating] = useState(false)
+  const [genOpen, setGenOpen] = useState(false)
 
   const studentById = useMemo(() => new Map((students ?? []).map((s) => [s.id, s])), [students])
   const classById = useMemo(() => new Map((classes ?? []).map((c) => [c.id, c])), [classes])
 
   const filtered = useMemo(() => {
-    let out = invoices ?? []
+    let out = [...(invoices ?? [])].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
     if (filters.status && filters.status !== 'all') out = out.filter((i) => i.status === filters.status)
     if (filters.classId && filters.classId !== 'all') {
       out = out.filter((i) => studentById.get(i.studentId)?.classId === filters.classId)
@@ -365,8 +507,19 @@ function InvoicesTab({ students, classes }: { students: StudentDoc[]; classes: C
         <Button className="gap-1.5" onClick={runGeneration} disabled={generating}>
           <Landmark className="size-4" /> {generating ? 'Generating...' : 'Generate this month\'s invoices'}
         </Button>
-        <span className="text-xs text-muted-foreground">Idempotent run: safe to click repeatedly, never duplicates.</span>
+        <Button variant="outline" className="gap-1.5" onClick={() => setGenOpen(true)}>
+          <FileText className="size-4" /> Custom generate...
+        </Button>
+        <span className="text-xs text-muted-foreground">Idempotent runs: safe to click repeatedly, never duplicates, never resets paid amounts.</span>
       </div>
+      <GenerateInvoicesDialog
+        open={genOpen}
+        onOpenChange={setGenOpen}
+        students={students}
+        classes={classes}
+        session={activeSession}
+        onDone={() => refetch()}
+      />
 
       <DataTable
         data={filtered}
@@ -426,10 +579,22 @@ const paymentSchema = z.object({
 })
 type PaymentForm = z.infer<typeof paymentSchema>
 
-function PaymentsTab({ students }: { students: StudentDoc[] }) {
+function PaymentsTab({ students, sessionId }: { students: StudentDoc[]; sessionId: string }) {
   const { user } = useAuth()
-  const { data: invoices } = useList<InvoiceDoc>('invoices', { orderBy: ['createdAt', 'desc'] })
-  const { data: payments, isLoading } = useList<PaymentDoc>('payments', { orderBy: ['paidAt', 'desc'] })
+  const { data: allInvoices } = useList<InvoiceDoc>(
+    'invoices',
+    sessionId ? { where: [['sessionId', '==', sessionId]] } : undefined,
+  )
+  const invoices = useMemo(
+    () => [...(allInvoices ?? [])].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
+    [allInvoices],
+  )
+  const { data: allPayments, isLoading } = useList<PaymentDoc>('payments', { orderBy: ['paidAt', 'desc'] })
+  const invoiceSessionIds = useMemo(() => new Set((invoices ?? []).map((i) => i.id)), [invoices])
+  const payments = useMemo(
+    () => (sessionId ? (allPayments ?? []).filter((p) => invoiceSessionIds.has(p.invoiceId)) : allPayments),
+    [allPayments, invoiceSessionIds, sessionId],
+  )
   const bulkPayments = useBulkWrite('payments', ['invoices'])
   const updateInvoice = useUpdate('invoices')
   const createInvoice = useCreate('invoices')
@@ -479,7 +644,7 @@ function PaymentsTab({ students }: { students: StudentDoc[] }) {
     await createInvoice.mutateAsync({
       id: invId,
       data: {
-        sessionId: 'sess-current', studentId: adHocStudent, feeTypeId: adHocFeeType, feeTypeName: ft?.name,
+        sessionId, studentId: adHocStudent, feeTypeId: adHocFeeType, feeTypeName: ft?.name,
         periodKey: new Date().toISOString().slice(0, 7), amount: adHocAmount, discount: 0, paidAmount: adHocAmount,
         dueDate: new Date().toISOString().slice(0, 10), status: 'paid', generatedByRunId: 'manual',
       },
@@ -637,9 +802,17 @@ function PaymentsTab({ students }: { students: StudentDoc[] }) {
 
 // ---------------- Records (reports) ----------------
 
-function RecordsTab({ students, classes }: { students: StudentDoc[]; classes: ClassDoc[] }) {
-  const { data: invoices } = useList<InvoiceDoc>('invoices')
-  const { data: payments } = useList<PaymentDoc>('payments')
+function RecordsTab({ students, classes, sessionId }: { students: StudentDoc[]; classes: ClassDoc[]; sessionId: string }) {
+  const { data: invoices } = useList<InvoiceDoc>(
+    'invoices',
+    sessionId ? { where: [['sessionId', '==', sessionId]] } : undefined,
+  )
+  const { data: allPayments } = useList<PaymentDoc>('payments')
+  const invoiceIds = useMemo(() => new Set((invoices ?? []).map((i) => i.id)), [invoices])
+  const payments = useMemo(
+    () => (sessionId ? (allPayments ?? []).filter((p) => invoiceIds.has(p.invoiceId)) : allPayments),
+    [allPayments, invoiceIds, sessionId],
+  )
   const studentById = useMemo(() => new Map((students ?? []).map((s) => [s.id, s])), [students])
   const classById = useMemo(() => new Map((classes ?? []).map((c) => [c.id, c])), [classes])
 
@@ -765,6 +938,8 @@ function ReceiptTemplatesTab() {
 // ---------------- Page ----------------
 
 export default function FeesPage() {
+  const session = useSessionScope()
+  const sessionId = session?.id ?? ''
   const { data: classes } = useList<ClassDoc>('classes')
   const { data: feeTypes } = useList<FeeTypeDoc>('feeTypes')
   const { data: students } = useList<StudentDoc>('students')
@@ -775,10 +950,10 @@ export default function FeesPage() {
       info="The full fee cycle: define fee types with a frequency, assign them to classes or students, generate period invoices (idempotent, no duplicates), collect partial or full payments with auto receipt numbers, and pull collection reports and defaulter lists."
       tabs={[
         { key: 'types', label: 'Fee types', badge: feeTypes?.length, content: <FeeTypesTab /> },
-        { key: 'assignments', label: 'Assignments', content: <AssignmentsTab classes={classes ?? []} feeTypes={feeTypes ?? []} /> },
-        { key: 'invoices', label: 'Invoices', content: <InvoicesTab students={students ?? []} classes={classes ?? []} /> },
-        { key: 'payments', label: 'Payments', content: <PaymentsTab students={students ?? []} /> },
-        { key: 'records', label: 'Records', content: <RecordsTab students={students ?? []} classes={classes ?? []} /> },
+        { key: 'assignments', label: 'Assignments', content: <AssignmentsTab classes={classes ?? []} feeTypes={feeTypes ?? []} sessionId={sessionId} /> },
+        { key: 'invoices', label: 'Invoices', content: <InvoicesTab students={students ?? []} classes={classes ?? []} sessionId={sessionId} /> },
+        { key: 'payments', label: 'Payments', content: <PaymentsTab students={students ?? []} sessionId={sessionId} /> },
+        { key: 'records', label: 'Records', content: <RecordsTab students={students ?? []} classes={classes ?? []} sessionId={sessionId} /> },
         { key: 'receipt-templates', label: 'Receipt templates', content: <ReceiptTemplatesTab /> },
       ]}
     />

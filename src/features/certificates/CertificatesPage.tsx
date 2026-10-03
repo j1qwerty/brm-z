@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, Skeleton } from '@/components/ui/display'
 import { Input, Label } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useList, useCreate } from '@/lib/data/hooks'
-import type { CertificateDoc, ClassDoc, SchoolSettingsDoc, StudentDoc } from '@/lib/types'
+import { useList, useCreate, useUpdate } from '@/lib/data/hooks'
+import type { CertificateDoc, ClassDoc, SchoolSettingsDoc, StudentDoc, TemplateDoc } from '@/lib/types'
 import { fmtDate } from '@/lib/utils'
 import { elementToPdf } from '@/lib/pdf'
 
@@ -40,10 +40,13 @@ function IssueSheet({
   onIssued: () => void
 }) {
   const create = useCreate('certificates')
+  const updateTemplate = useUpdate('templates')
+  const { data: templates } = useList<TemplateDoc>('templates', { where: [['kind', '==', 'certificate']] })
   const [studentId, setStudentId] = useState('')
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10))
   const [conduct, setConduct] = useState('Good')
   const [reason, setReason] = useState('Parent request')
+  const [templatePick, setTemplatePick] = useState('')
   const [busy, setBusy] = useState(false)
   const previewRef = useRef<HTMLDivElement>(null)
 
@@ -51,6 +54,22 @@ function IssueSheet({
   const cls = classes.find((c) => c.id === student?.classId)
   const serial = `${KIND_META[kind].serialPrefix}-${new Date().getFullYear()}-${String(existingSerials + 1).padStart(3, '0')}`
   const school = settings?.[0]
+
+  // Certificate designs live in Templates (kind 'certificate'), one default per
+  // certificate type. '' means "use the default for this type".
+  const scoped = (templates ?? []).filter((t) => (t.certType ?? 'tc') === kind)
+  const defaultTemplate = scoped.find((t) => t.isDefault) ?? scoped[0]
+  const effectiveTemplate = scoped.find((t) => t.id === templatePick) ?? defaultTemplate
+
+  const makeDefaultForType = async () => {
+    const target = effectiveTemplate
+    if (!target) return
+    for (const t of scoped) {
+      if (t.isDefault && t.id !== target.id) await updateTemplate.mutateAsync({ id: t.id, data: { isDefault: false } })
+    }
+    await updateTemplate.mutateAsync({ id: target.id, data: { isDefault: true, certType: kind } })
+    toast.success(`Default ${KIND_META[kind].title.toLowerCase()} design set`, { description: target.name })
+  }
 
   const bodyText = useMemo(() => {
     if (!student) return ''
@@ -69,7 +88,8 @@ function IssueSheet({
     try {
       await create.mutateAsync({
         data: {
-          type: kind, studentId: student.id, serialNo: serial, issuedDate: issueDate, templateId: null,
+          type: kind, studentId: student.id, serialNo: serial, issuedDate: issueDate,
+          templateId: effectiveTemplate?.id ?? null,
           dataSnapshot: { body: bodyText, conduct, reason },
         },
       })
@@ -125,6 +145,24 @@ function IssueSheet({
               <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Admission elsewhere / passport" />
             </div>
           )}
+          <div className="space-y-1">
+            <Label>Design template</Label>
+            <Select value={templatePick} onValueChange={setTemplatePick}>
+              <SelectTrigger><SelectValue placeholder={defaultTemplate ? `Default: ${defaultTemplate.name}` : 'No certificate designs yet'} /></SelectTrigger>
+              <SelectContent>
+                {scoped.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>{t.name}{t.isDefault ? ' (default)' : ''}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {scoped.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground">No certificate designs yet - create one in <a className="text-primary hover:underline" href="/templates">Templates</a>, then re-open this tab.</p>
+            ) : effectiveTemplate && !effectiveTemplate.isDefault ? (
+              <Button size="sm" variant="ghost" className="gap-1 px-0 text-xs text-primary" onClick={makeDefaultForType}>
+                Set {effectiveTemplate.name} as the default {KIND_META[kind].title.toLowerCase()} design
+              </Button>
+            ) : null}
+          </div>
           <p className="rounded-lg bg-muted/50 p-2.5 text-xs text-muted-foreground">
             Next serial: <span className="tabular font-semibold text-foreground">{serial}</span> (auto-assigned per certificate type)
           </p>

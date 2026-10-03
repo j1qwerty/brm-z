@@ -8,6 +8,7 @@ import { Card, CardContent, Badge, Avatar, Skeleton } from '@/components/ui/disp
 import { Input, Label } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useList, useBulkWrite } from '@/lib/data/hooks'
+import { useSessionScope } from '@/app/AppShell'
 import { useAuth } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { notify } from '@/lib/notify'
@@ -46,10 +47,14 @@ function StatusPicker({ value, onChange }: { value: AttendanceStatus; onChange: 
 
 function MarkRegister({ classes }: { classes: ClassDoc[] }) {
   const { user } = useAuth()
+  const session = useSessionScope()
+  const sessionId = session?.id ?? ''
   const [classId, setClassId] = useState(classes[0]?.id ?? '')
   const [section, setSection] = useState(classes[0]?.sections[0] ?? 'A')
   const [date, setDate] = useState(todayStr())
   const { data: students, isLoading } = useList<StudentDoc>('students', { where: [['classId', '==', classId]] })
+  // Server filters stay index-free (date+personType+classId is a deployed composite);
+  // the session is matched client-side below so no 4-field composite is needed.
   const { data: existing } = useList<AttendanceDoc>('attendance', {
     where: [['date', '==', date], ['personType', '==', 'student'], ['classId', '==', classId]],
   })
@@ -64,23 +69,23 @@ function MarkRegister({ classes }: { classes: ClassDoc[] }) {
   const current = useMemo(() => {
     const map = new Map<string, AttendanceStatus>()
     for (const s of sectionStudents) {
-      const ex = existing?.find((a) => a.personId === s.id)
+      const ex = existing?.find((a) => a.personId === s.id && (a.sessionId || '') === sessionId)
       map.set(s.id, marks[s.id] ?? ex?.status ?? 'present')
     }
     return map
-  }, [sectionStudents, existing, marks])
+  }, [sectionStudents, existing, marks, sessionId])
 
   const dirty = sectionStudents.some((s) => {
-    const ex = existing?.find((a) => a.personId === s.id)
+    const ex = existing?.find((a) => a.personId === s.id && (a.sessionId || '') === sessionId)
     return (marks[s.id] ?? undefined) !== undefined && ex?.status !== marks[s.id]
   })
 
   const saveAll = async () => {
-    const sessionId = localStorage.getItem('bmrc-active-session') ?? ''
     const ops = sectionStudents.map((s) => {
-      const ex = existing?.find((a) => a.personId === s.id)
+      const ex = existing?.find((a) => a.personId === s.id && (a.sessionId || '') === sessionId)
       return {
-        id: ex?.id ?? `att-${date}-${s.id}`,
+        // session-scoped id: the same class/date in another session is a different register
+        id: ex?.id ?? `att-${sessionId}-${date}-${s.id}`,
         data: {
           date, sessionId, personType: 'student' as const, personId: s.id,
           classId, section, status: current.get(s.id) ?? 'present', markedBy: user?.id ?? '',
@@ -176,6 +181,8 @@ function MarkRegister({ classes }: { classes: ClassDoc[] }) {
 
 function StaffAttendance() {
   const { user } = useAuth()
+  const session = useSessionScope()
+  const sessionId = session?.id ?? ''
   const [date, setDate] = useState(todayStr())
   const { data: staff, isLoading } = useList<StaffDoc>('staff')
   const { data: existing } = useList<AttendanceDoc>('attendance', {
@@ -184,15 +191,14 @@ function StaffAttendance() {
   const bulk = useBulkWrite('attendance')
   const [marks, setMarks] = useState<Record<string, AttendanceStatus>>({})
 
-  const current = (id: string): AttendanceStatus => marks[id] ?? existing?.find((a) => a.personId === id)?.status ?? 'present'
+  const current = (id: string): AttendanceStatus => marks[id] ?? existing?.find((a) => a.personId === id && (a.sessionId || '') === sessionId)?.status ?? 'present'
 
   const saveAll = async () => {
-    const sessionId = localStorage.getItem('bmrc-active-session') ?? ''
     await bulk.mutateAsync(
       (staff ?? []).map((s) => {
-        const ex = existing?.find((a) => a.personId === s.id)
+        const ex = existing?.find((a) => a.personId === s.id && (a.sessionId || '') === sessionId)
         return {
-          id: ex?.id ?? `att-stf-${date}-${s.id}`,
+          id: ex?.id ?? `att-stf-${sessionId}-${date}-${s.id}`,
           data: { date, sessionId, personType: 'staff' as const, personId: s.id, status: current(s.id), markedBy: user?.id ?? '' },
         }
       }),

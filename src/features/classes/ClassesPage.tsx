@@ -14,8 +14,9 @@ import { Switch } from '@/components/ui/toggle'
 import { SheetContent, Sheet as SheetRoot } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { useList, useCreate, useUpdate, useSoftDelete, useBulkWrite } from '@/lib/data/hooks'
+import { useSessionScope } from '@/app/AppShell'
 import { useAuth } from '@/lib/auth'
-import type { ClassDoc, StaffDoc, StudentDoc, SubjectDoc, AssignmentDoc, SessionDoc } from '@/lib/types'
+import type { ClassDoc, StaffDoc, StudentDoc, SubjectDoc, AssignmentDoc } from '@/lib/types'
 
 const classSchema = z.object({
   name: z.string().min(1, 'Class name required'),
@@ -375,11 +376,11 @@ function SubjectMatrixRow({
 }
 
 export default function ClassesPage() {
+  const session = useSessionScope()
   const { data: classes, isLoading } = useList<ClassDoc>('classes')
   const { data: teachers } = useList<StaffDoc>('staff', { where: [['staffType', '==', 'teaching']] })
-  const { data: sessions } = useList<SessionDoc>('sessions')
   const [sheetOpen, setSheetOpen] = useState(false)
-  const activeSession = sessions?.find((s) => s.isActive)
+  const activeSession = session
 
   const sorted = useMemo(() => [...(classes ?? [])].sort((a, b) => a.order - b.order), [classes])
 

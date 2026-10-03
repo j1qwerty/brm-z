@@ -14,6 +14,8 @@ import { useAuth } from '@/lib/auth'
 import { ROLE_LABEL } from '@/lib/permissions'
 import type { Role, UserDoc, UserStatus } from '@/lib/types'
 import { fmtDate } from '@/lib/utils'
+import { Input } from '@/components/ui/input'
+import { Dialog as DialogRoot, DialogContent, DialogHeader, DialogFooter } from '@/components/ui/dialog'
 
 const ROLES: Role[] = ['admin', 'teacher', 'accountant', 'staff', 'student', 'parent']
 
@@ -34,6 +36,9 @@ function UserTable({ users, loading }: { users: UserDoc[] | undefined; loading: 
   const statusBadge = (s: UserStatus) =>
     s === 'active' ? <Badge variant="success">active</Badge> : s === 'pending' ? <Badge variant="warning">pending</Badge> : <Badge variant="danger">suspended</Badge>
 
+  const [gmailFor, setGmailFor] = useState<UserDoc | null>(null)
+  const [gmailValue, setGmailValue] = useState('')
+
   const columns = useMemo(
     () => [
       {
@@ -49,6 +54,22 @@ function UserTable({ users, loading }: { users: UserDoc[] | undefined; loading: 
             </div>
           </div>
         ),
+      },
+      {
+        id: 'gmail',
+        header: 'Linked Gmail',
+        accessorFn: (u: UserDoc) => u.linkedGmail ?? '',
+        cell: ({ row }: { row: { original: UserDoc } }) => {
+          const u = row.original
+          if (!u.linkedGmail) return <span className="text-xs text-muted-foreground">-</span>
+          const v = u.gmailStatus === 'approved' ? 'success' : u.gmailStatus === 'rejected' ? 'danger' : 'warning'
+          return (
+            <span className="flex items-center gap-1.5">
+              <span className="max-w-44 truncate font-mono text-xs">{u.linkedGmail}</span>
+              <Badge variant={v}>{u.gmailStatus ?? 'pending'}</Badge>
+            </span>
+          )
+        },
       },
       {
         id: 'role',
@@ -78,6 +99,13 @@ function UserTable({ users, loading }: { users: UserDoc[] | undefined; loading: 
       onClick: (sel) => {
         Promise.all(sel.filter((u) => u.status !== 'active').map((u) => update.mutateAsync({ id: u.id, data: { status: 'active' } })))
           .then((r) => toast.success(`Approved ${r.length} account${r.length === 1 ? '' : 's'}`))
+      },
+    },
+    {
+      label: 'Approve Gmail', icon: <ShieldCheck className="size-3.5" />,
+      onClick: (sel) => {
+        Promise.all(sel.filter((u) => u.linkedGmail && u.gmailStatus === 'pending').map((u) => update.mutateAsync({ id: u.id, data: { gmailStatus: 'approved' } })))
+          .then((r) => toast.success(`Approved Gmail for ${r.length} account${r.length === 1 ? '' : 's'}`))
       },
     },
   ]
@@ -121,6 +149,21 @@ function UserTable({ users, loading }: { users: UserDoc[] | undefined; loading: 
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
+              <DropdownMenuLabel>Google sign-in Gmail</DropdownMenuLabel>
+              {u.gmailStatus === 'pending' && u.linkedGmail && (
+                <>
+                  <DropdownMenuItem onClick={() => { update.mutate({ id: u.id, data: { gmailStatus: 'approved' } }); toast.success(`Gmail approved for ${u.name}`) }}>
+                    <BadgeCheck className="size-4" /> Approve {u.linkedGmail}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem destructive onClick={() => { update.mutate({ id: u.id, data: { gmailStatus: 'rejected' } }); toast.success(`Gmail rejected for ${u.name}`) }}>
+                    <Ban className="size-4" /> Reject {u.linkedGmail}
+                  </DropdownMenuItem>
+                </>
+              )}
+              <DropdownMenuItem onClick={() => { setGmailFor(u); setGmailValue(u.linkedGmail ?? '') }}>
+                <ShieldCheck className="size-4" /> Set linked Gmail...
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               {u.status === 'pending' && (
                 <DropdownMenuItem onClick={() => { update.mutate({ id: u.id, data: { status: 'active' } }); toast.success(`${u.name} approved`) }}>
                   <BadgeCheck className="size-4" /> Approve account
@@ -145,6 +188,35 @@ function UserTable({ users, loading }: { users: UserDoc[] | undefined; loading: 
           </DropdownMenu>
         )}
       />
+      <DialogRoot open={Boolean(gmailFor)} onOpenChange={(o) => !o && setGmailFor(null)}>
+        <DialogContent>
+          <DialogHeader title={`Linked Gmail for ${gmailFor?.name}`} description="The Gmail this user signs in with via Google. Setting it here approves it immediately (admin-set). Users who set their own go to pending first." />
+          <Input
+            type="email"
+            placeholder="name@gmail.com"
+            value={gmailValue}
+            onChange={(e) => setGmailValue(e.target.value)}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGmailFor(null)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!gmailFor) return
+                const v = gmailValue.trim().toLowerCase()
+                if (!v || !v.includes('@')) {
+                  toast.error('Enter a valid Gmail address')
+                  return
+                }
+                update.mutate({ id: gmailFor.id, data: { linkedGmail: v, gmailStatus: 'approved' } })
+                toast.success(`Linked Gmail saved for ${gmailFor.name}`)
+                setGmailFor(null)
+              }}
+            >
+              Save & approve
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
       <ConfirmDialog
         open={Boolean(confirmSuspend)}
         onOpenChange={(o) => !o && setConfirmSuspend(null)}

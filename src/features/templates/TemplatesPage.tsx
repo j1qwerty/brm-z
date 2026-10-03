@@ -179,10 +179,17 @@ function Designer({
 
   const makeDefault = async () => {
     const all = await dataProvider.list<TemplateDoc>('templates', { where: [['kind', '==', template.kind]] })
-    for (const t of all) {
+    // Certificate templates default per certificate type (TC/bonafide/character),
+    // every other kind defaults per kind.
+    const sameScope = all.filter((t) =>
+      template.kind === 'certificate' ? (t.certType ?? 'tc') === (template.certType ?? 'tc') : true,
+    )
+    for (const t of sameScope) {
       if (t.isDefault && t.id !== template.id) await dataProvider.update('templates', t.id, { isDefault: false })
     }
-    await dataProvider.update('templates', template.id, { isDefault: true })
+    const patch: Record<string, unknown> = { isDefault: true }
+    if (template.kind === 'certificate' && !template.certType) patch.certType = 'tc'
+    await dataProvider.update('templates', template.id, patch)
     setIsDefault(true)
     toast.success('Set as default for this kind')
   }
@@ -228,7 +235,7 @@ function Designer({
   return (
     <SheetRoot open onOpenChange={(o) => !o && onClose()}>
       <SheetContent
-        xwide
+        fullscreen
         title={`Designer · ${template.name}`}
         description="Drag elements on the canvas, resize with the handles, reorder layers on the left, save when done. The default template per kind drives PDFs."
       >

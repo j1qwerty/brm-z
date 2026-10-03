@@ -20,6 +20,7 @@ export default function CompleteProfilePage() {
   const [role, setRole] = useState<Role | null>(null)
   const [busy, setBusy] = useState(false)
   const [name, setName] = useState('')
+  const [linkGmail, setLinkGmail] = useState(true)
 
   useEffect(() => {
     if (user?.name) setName(user.name)
@@ -36,7 +37,14 @@ export default function CompleteProfilePage() {
     if (!user || !role) return
     setBusy(true)
     try {
-      await dataProvider.update('users', user.id, { role, status: 'pending', name: name || user.name })
+      await dataProvider.update('users', user.id, {
+        role,
+        status: 'pending',
+        name: name || user.name,
+        // Bind this Google account for future Google sign-ins; an admin
+        // approves it in User Accounts (Linked Gmail column).
+        ...(linkGmail && user.email ? { linkedGmail: user.email.toLowerCase(), gmailStatus: 'pending' as const } : {}),
+      })
       toast.success('Request sent', { description: 'An admin will review your role request.' })
       navigate('/pending', { replace: true })
     } catch (e) {
@@ -81,6 +89,18 @@ export default function CompleteProfilePage() {
               ))}
             </div>
           </div>
+          <label className="mt-4 flex cursor-pointer items-start gap-2 rounded-lg border border-border p-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-[var(--primary)]"
+              checked={linkGmail}
+              onChange={(e) => setLinkGmail(e.target.checked)}
+            />
+            <span>
+              Link <span className="font-mono text-xs">{user?.email}</span> for Google sign-in
+              <span className="block text-xs text-muted-foreground">An admin approves it in User Accounts before it counts.</span>
+            </span>
+          </label>
           <div className="mt-5 flex gap-2">
             <Button className="flex-1" onClick={submit} disabled={!role || busy}>
               {busy && <Loader2 className="size-4 animate-spin" />} Continue

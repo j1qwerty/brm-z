@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { GraduationCap, Loader2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { ROLE_HOME, ROLE_LABEL } from '@/lib/permissions'
+import type { Role } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input, Label } from '@/components/ui/input'
 import { Card, CardContent, Separator } from '@/components/ui/display'
@@ -16,6 +17,17 @@ const schema = z.object({
   password: z.string().min(6, 'At least 6 characters'),
 })
 type FormValues = z.infer<typeof schema>
+
+// Mirrors scripts/seed.ts DEMO_USERS (password Bmrc@2026 for all).
+// Tapping a role autofills the form above AND signs in immediately,
+// landing each role on its own dashboard/portal via ROLE_HOME.
+const FIREBASE_TEST_ACCOUNTS: { role: Role; email: string; password: string }[] = [
+  { role: 'admin', email: 'admin@bmrc.demo', password: 'Bmrc@2026' },
+  { role: 'teacher', email: 'teacher@bmrc.demo', password: 'Bmrc@2026' },
+  { role: 'accountant', email: 'accountant@bmrc.demo', password: 'Bmrc@2026' },
+  { role: 'staff', email: 'staff@bmrc.demo', password: 'Bmrc@2026' },
+  { role: 'parent', email: 'parent@bmrc.demo', password: 'Bmrc@2026' },
+]
 
 export default function LoginPage() {
   const { status, user, signInEmail, signInGoogle, demoAccounts, demoLogin, mode } = useAuth()
@@ -119,8 +131,43 @@ export default function LoginPage() {
               </Button>
             </form>
 
+            {/* Seeded test accounts (created by `pnpm db:seed`, password Bmrc@2026).
+                Click a role to autofill the form and sign straight in. */}
             {mode === 'firebase' && (
               <>
+                <div className="my-5 flex items-center gap-3">
+                  <Separator className="flex-1" />
+                  <span className="text-xs text-muted-foreground">or one-tap test accounts</span>
+                  <Separator className="flex-1" />
+                </div>
+                <div className="space-y-1.5">
+                  {FIREBASE_TEST_ACCOUNTS.map((a) => (
+                    <button
+                      key={a.email}
+                      type="button"
+                      disabled={busy || googleBusy}
+                      onClick={() => {
+                        form.setValue('email', a.email)
+                        form.setValue('password', a.password)
+                        void form.handleSubmit(onSubmit)()
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg border border-border px-3 py-2 text-left transition-colors hover:bg-muted disabled:opacity-50"
+                      title={`Sign in as ${ROLE_LABEL[a.role]}`}
+                    >
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11px] font-bold text-primary">
+                        {ROLE_LABEL[a.role][0]}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs font-semibold">{ROLE_LABEL[a.role]}</span>
+                        <span className="block truncate font-mono text-[11px] text-muted-foreground">{a.email} · {a.password}</span>
+                      </span>
+                      <span className="shrink-0 text-[11px] font-medium text-primary">Tap to login</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-center text-xs text-muted-foreground">
+                  Tap a role to autofill & sign in. Needs <span className="font-mono">pnpm db:seed</span> run once.
+                </p>
                 <div className="my-5 flex items-center gap-3">
                   <Separator className="flex-1" />
                   <span className="text-xs text-muted-foreground">or</span>

@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, Skeleton } from '@/components/ui/display'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useList } from '@/lib/data/hooks'
+import { useSessionScope } from '@/app/AppShell'
 import { useAuth } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { dataProvider } from '@/lib/data'
-import type { AssignmentDoc, ClassDoc, StaffDoc, SubjectDoc, TimetableSlotDoc } from '@/lib/types'
+import type { AssignmentDoc, ClassDoc, StaffDoc, SubjectDoc, TimetableConfigDoc, TimetableSlotDoc } from '@/lib/types'
 import { cn, WEEKDAYS } from '@/lib/utils'
 import { elementToPdf } from '@/lib/pdf'
 
@@ -24,12 +25,15 @@ function TimetableGrid({
   editable,
   onCellClick,
   periodCount,
+  periodsForDay,
 }: {
   slots: TimetableSlotDoc[]
   subjects: SubjectDoc[]
   editable: boolean
   onCellClick?: (day: number, periodNo: number, existing?: TimetableSlotDoc) => void
   periodCount: number
+  /** Periods that day actually runs. Columns past it render as "day over". */
+  periodsForDay: (day: number) => number
 }) {
   const periods = Array.from({ length: periodCount }, (_, i) => i + 1)
   const days = [1, 2, 3, 4, 5, 6]
@@ -50,6 +54,15 @@ function TimetableGrid({
             <tr key={d} className="border-b border-border/50 last:border-0">
               <td className="px-3 py-2 text-xs font-semibold text-muted-foreground">{WEEKDAYS[d - 1]}</td>
               {periods.map((p) => {
+                if (p > periodsForDay(d)) {
+                  return (
+                    <td key={p} className="px-1.5 py-1.5">
+                      <div className="flex h-12 w-full items-center justify-center rounded-lg bg-muted/30 text-[10px] font-medium text-muted-foreground/50" title="School day ends here for this class">
+                        end
+                      </div>
+                    </td>
+                  )
+                }
                 const slot = slots.find((s) => s.day === d && s.periodNo === p)
                 const subject = subjects.find((x) => x.id === slot?.subjectId)
                 return (
@@ -89,12 +102,15 @@ function TimetableGrid({
 
 export default function TimetablePage() {
   const { user } = useAuth()
+  const session = useSessionScope()
+  const sessionId = session?.id ?? ''
   const editor = can(user?.role, 'timetable.edit')
   const isTeacher = user?.role === 'teacher'
   const { data: classes } = useList<ClassDoc>('classes')
   const { data: staff } = useList<StaffDoc>('staff')
   const { data: assignments } = useList<AssignmentDoc>('assignments')
   const { data: slots, refetch } = useList<TimetableSlotDoc>('timetable')
+  const { data: configs, refetch: refetchConfig } = useList<TimetableConfigDoc>('timetableConfig')
   const [view, setView] = useState<'class' | 'teacher'>(isTeacher ? 'teacher' : 'class')
   const [classId, setClassId] = useState('')
   const [section, setSection] = useState('A')
@@ -105,11 +121,39 @@ export default function TimetablePage() {
   const cls = classes?.find((c) => c.id === classId)
   const { data: subjects } = useList<SubjectDoc>(cls ? `classes/${cls.id}/subjects` : 'classes/none/subjects', undefined, { enabled: Boolean(cls) })
 
+  // Periods per class-section: Mon-Fri vs Saturday can differ (6 vs 8 etc).
+  const config = configs?.find((c) => c.classId === classId && c.section === section)
+  const weekdayPeriods = config?.weekdayPeriods ?? 6
+  const saturdayPeriods = config?.saturdayPeriods ?? 6
+  const periodsForDay = (day: number) => (day === 6 ? saturdayPeriods : weekdayPeriods)
+  const periodCount = Math.max(weekdayPeriods, saturdayPeriods, 1)
+
+  const setPeriods = async (patch: { weekdayPeriods?: number; saturdayPeriods?: number }) => {
+    if (!classId) return
+    const next = {
+      classId,
+      section,
+      weekdayPeriods: patch.weekdayPeriods ?? weekdayPeriods,
+      saturdayPeriods: patch.saturdayPeriods ?? saturdayPeriods,
+    }
+    if (next.weekdayPeriods < 1 || next.saturdayPeriods < 1) return
+    const id = `${classId}_${section}`
+    try {
+      const existing = await dataProvider.get('timetableConfig', id)
+      if (existing) await dataProvider.update('timetableConfig', id, next)
+      else await dataProvider.create('timetableConfig', next, id)
+    } catch {
+      await dataProvider.create('timetableConfig', next, id).catch(() => dataProvider.update('timetableConfig', id, next))
+    }
+    await refetchConfig()
+  }
+
   const shownSlots = useMemo(() => {
-    const all = slots ?? []
+    const inSession = (s: TimetableSlotDoc) => !sessionId || (s.sessionId || '') === sessionId
+    const all = (slots ?? []).filter(inSession)
     if (view === 'class') return all.filter((s) => s.classId === classId && s.section === section)
     return all.filter((s) => s.teacherId === (isTeacher ? user?.staffId : teacherId))
-  }, [slots, view, classId, section, teacherId, isTeacher, user?.staffId])
+  }, [slots, view, classId, section, teacherId, isTeacher, user?.staffId, sessionId])
 
   const conflictFor = (day: number, periodNo: number, teacher: string, excludeId?: string) =>
     (slots ?? []).find((s) => s.day === day && s.periodNo === periodNo && s.teacherId === teacher && s.id !== excludeId)
@@ -125,7 +169,6 @@ export default function TimetablePage() {
       })
       return
     }
-    const sessionId = localStorage.getItem('bmrc-active-session') ?? ''
     if (cellEdit.existing) {
       await dataProvider.update('timetable', cellEdit.existing.id, { subjectId: draft.subjectId, teacherId: draft.teacherId })
     } else {
@@ -201,6 +244,26 @@ export default function TimetablePage() {
                 </SelectContent>
               </Select>
             </div>
+            {view === 'class' && classId && editor && (
+              <>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Periods Mon-Fri</label>
+                  <div className="flex h-9 items-center gap-1 rounded-md border border-input bg-card px-1">
+                    <Button variant="ghost" size="iconSm" className="size-7" aria-label="Fewer weekday periods" onClick={() => setPeriods({ weekdayPeriods: weekdayPeriods - 1 })}>-</Button>
+                    <span className="w-6 text-center text-sm font-bold tabular">{weekdayPeriods}</span>
+                    <Button variant="ghost" size="iconSm" className="size-7" aria-label="More weekday periods" onClick={() => setPeriods({ weekdayPeriods: weekdayPeriods + 1 })}>+</Button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Periods Saturday</label>
+                  <div className="flex h-9 items-center gap-1 rounded-md border border-input bg-card px-1">
+                    <Button variant="ghost" size="iconSm" className="size-7" aria-label="Fewer Saturday periods" onClick={() => setPeriods({ saturdayPeriods: saturdayPeriods - 1 })}>-</Button>
+                    <span className="w-6 text-center text-sm font-bold tabular">{saturdayPeriods}</span>
+                    <Button variant="ghost" size="iconSm" className="size-7" aria-label="More Saturday periods" onClick={() => setPeriods({ saturdayPeriods: saturdayPeriods + 1 })}>+</Button>
+                  </div>
+                </div>
+              </>
+            )}
           </>
         ) : (
           !isTeacher && (
@@ -229,7 +292,8 @@ export default function TimetablePage() {
             slots={shownSlots}
             subjects={subjects ?? []}
             editable={editor && view === 'class'}
-            periodCount={6}
+            periodCount={periodCount}
+            periodsForDay={periodsForDay}
             onCellClick={(day, periodNo, existing) => {
               if (!editor) return
               setCellEdit({ day, periodNo, existing })

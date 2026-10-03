@@ -65,6 +65,7 @@ export function SheetContent({
   description,
   wide,
   xwide,
+  fullscreen,
   className,
 }: {
   children: ReactNode
@@ -72,6 +73,8 @@ export function SheetContent({
   description?: ReactNode
   wide?: boolean
   xwide?: boolean
+  /** Full-viewport takeover (no side margin). Used by the template designer. */
+  fullscreen?: boolean
   className?: string
 }) {
   return (
@@ -80,7 +83,13 @@ export function SheetContent({
       <DialogPrimitive.Content
         className={cn(
           'fixed right-0 top-0 z-50 flex h-dvh w-full flex-col gap-4 overflow-y-auto border-l border-border bg-card p-6 shadow-lg duration-200',
-          xwide ? 'sm:max-w-[95vw] lg:max-w-[1400px]' : wide ? 'sm:max-w-2xl' : 'sm:max-w-md',
+          fullscreen
+            ? 'max-w-none border-l-0 sm:max-w-none'
+            : xwide
+              ? 'sm:max-w-[95vw] lg:max-w-[1400px]'
+              : wide
+                ? 'sm:max-w-2xl'
+                : 'sm:max-w-md',
           className,
         )}
       >

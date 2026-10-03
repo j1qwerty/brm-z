@@ -505,6 +505,53 @@ async function main() {
   const run = await get<Record<string, unknown>>('runHistory', `${P}run-1`)
   check('run history written', run?.result === 'live-test', String(run?.result))
 
+  // ---- session scoping + new collections/fields ----
+  section('SESSION SCOPING + NEW COLLECTIONS')
+  await put('timetableConfig', `${P}cfg-5a`, { classId: `${P}c-5`, section: 'A', weekdayPeriods: 8, saturdayPeriods: 4 })
+  const cfg = await get<Record<string, unknown>>('timetableConfig', `${P}cfg-5a`)
+  check('timetable config stores weekday/saturday periods', cfg?.weekdayPeriods === 8 && cfg?.saturdayPeriods === 4, JSON.stringify({ w: cfg?.weekdayPeriods, s: cfg?.saturdayPeriods }))
+  await edit('timetableConfig', `${P}cfg-5a`, { saturdayPeriods: 5 })
+  const cfgEdited = await get<Record<string, unknown>>('timetableConfig', `${P}cfg-5a`)
+  check('edit timetable config periods', cfgEdited?.saturdayPeriods === 5, String(cfgEdited?.saturdayPeriods))
+  reads++
+  const invSnap = await db.collection('invoices').where('sessionId', '==', `${P}sess-2627`).get()
+  const invTests = invSnap.docs.map((d) => d.id).filter((id) => id.startsWith(P))
+  check('session-scoped invoice query finds all 5 test invoices', invTests.length === 5, `${invTests.length}`)
+  reads++
+  const examSnap = await db.collection('exams').where('sessionId', '==', `${P}sess-2627`).get()
+  check('session-scoped exam query finds the test exam', examSnap.docs.map((d) => d.id).filter((id) => id.startsWith(P)).length === 1)
+  reads++
+  const attSnap = await db.collection('attendance').where('sessionId', '==', `${P}sess-2627`).get()
+  check('session-scoped attendance query finds all 8 rows', attSnap.docs.map((d) => d.id).filter((id) => id.startsWith(P)).length === 8, `${attSnap.docs.map((d) => d.id).filter((id) => id.startsWith(P)).length}`)
+  await put('users', `${P}u-gmail-live`, { name: 'Live Gmail User', email: 'live@gmail.com', role: 'parent', status: 'pending', childIds: [], linkedGmail: 'live@gmail.com', gmailStatus: 'pending' })
+  await edit('users', `${P}u-gmail-live`, { gmailStatus: 'approved', status: 'active' })
+  const gmailUser = await get<Record<string, unknown>>('users', `${P}u-gmail-live`)
+  check('gmail link pending->approved with account activation', gmailUser?.gmailStatus === 'approved' && gmailUser?.status === 'active', JSON.stringify({ g: gmailUser?.gmailStatus, s: gmailUser?.status }))
+  await edit('students', `${P}stu-c5a1`, { loginEmail: 'live.kid@gmail.com' })
+  const loginStu = await get<Record<string, unknown>>('students', `${P}stu-c5a1`)
+  check('student loginEmail stored', loginStu?.loginEmail === 'live.kid@gmail.com', String(loginStu?.loginEmail))
+  await put('templates', `${P}tpl-cert-tc`, {
+    kind: 'certificate', certType: 'tc', name: 'Test TC design', isDefault: true,
+    images: { logo: '', background: '', extra1: '' },
+    layoutJson: { page: { w: 1000, h: 700 }, elements: [] },
+  })
+  await put('templates', `${P}tpl-cert-bon`, {
+    kind: 'certificate', certType: 'bonafide', name: 'Test Bonafide design', isDefault: true,
+    images: { logo: '', background: '', extra1: '' },
+    layoutJson: { page: { w: 1000, h: 700 }, elements: [] },
+  })
+  reads++
+  const certTplSnap = await db.collection('templates').where('kind', '==', 'certificate').get()
+  const certTpls = certTplSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((d) => d.id.startsWith(P))
+  check('two certificate templates with distinct certTypes', certTpls.length === 2, `${certTpls.length}`)
+  check('one default per certificate type (tc + bonafide coexist)', certTpls.filter((t) => (t as unknown as { isDefault: boolean }).isDefault).length === 2, JSON.stringify(certTpls.map((t) => (t as unknown as { certType: string }).certType)))
+  await put('certificates', `${P}cert-2`, {
+    type: 'tc', studentId: `${P}stu-c5a2`, serialNo: `${P}TC-001`, issuedDate: '2026-08-01',
+    templateId: `${P}tpl-cert-tc`, dataSnapshot: { name: 'T2' },
+  })
+  const cert2 = await get<Record<string, unknown>>('certificates', `${P}cert-2`)
+  check('certificate stores chosen templateId', cert2?.templateId === `${P}tpl-cert-tc`, String(cert2?.templateId))
+
   // ---- missing-doc read ----
   section('NEGATIVE CHECKS')
   const missing = await get('students', `${P}does-not-exist`)

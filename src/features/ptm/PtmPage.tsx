@@ -11,7 +11,7 @@ import { SheetContent, Sheet as SheetRoot } from '@/components/ui/dialog'
 import { useList, useCreate, useUpdate } from '@/lib/data/hooks'
 import { useAuth } from '@/lib/auth'
 import { can } from '@/lib/permissions'
-import { notify } from '@/lib/notify'
+import { notify, notifyMany } from '@/lib/notify'
 import type { ClassDoc, PtmDoc, PtmSlot, StudentDoc, StaffDoc, UserDoc } from '@/lib/types'
 import { fmtDate, todayStr } from '@/lib/utils'
 
@@ -19,17 +19,21 @@ function CreatePtmSheet({
   open,
   onOpenChange,
   classes,
+  staff,
   teacherIdFixed,
   teacherName,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
   classes: ClassDoc[]
+  staff: StaffDoc[]
   teacherIdFixed?: string
   teacherName?: string
 }) {
   const create = useCreate('ptms')
+  const { data: users } = useList<UserDoc>('users')
   const [classId, setClassId] = useState('')
+  const [teacherId, setTeacherId] = useState(teacherIdFixed ?? '')
   const [date, setDate] = useState('')
   const [title, setTitle] = useState('')
   const [times, setTimes] = useState('10:00, 10:20, 10:40, 11:00')
@@ -37,6 +41,11 @@ function CreatePtmSheet({
   const submit = async () => {
     if (!classId || !date) {
       toast.error('Pick a class and a date')
+      return
+    }
+    const resolvedTeacher = teacherIdFixed ?? teacherId
+    if (!resolvedTeacher) {
+      toast.error('Pick the teacher hosting this PTM')
       return
     }
     const slots: PtmSlot[] = times
@@ -48,7 +57,16 @@ function CreatePtmSheet({
       toast.error('Add at least one slot time')
       return
     }
-    await create.mutateAsync({ data: { teacherId: teacherIdFixed ?? '', classId, date, slots, status: 'scheduled', title: title || `PTM - ${fmtDate(date)}` } })
+    await create.mutateAsync({ data: { teacherId: resolvedTeacher, classId, date, slots, status: 'scheduled', title: title || `PTM - ${fmtDate(date)}` } })
+    // Notify parents whose children are in this class, so the meeting actually fills up.
+    try {
+      const parentIds = (users ?? [])
+        .filter((u) => u.status === 'active' && u.role === 'parent' && (u.childIds ?? []).length > 0)
+        .map((u) => u.id)
+      await notifyMany(parentIds, 'New PTM scheduled', `${classes.find((c) => c.id === classId)?.name ?? 'Your class'} PTM on ${fmtDate(date)} - book a slot.`, '/ptm')
+    } catch {
+      // notification is best-effort
+    }
     toast.success('PTM created', { description: 'Parents of this class can now book slots from their portal.' })
     onOpenChange(false)
   }
@@ -58,6 +76,19 @@ function CreatePtmSheet({
       <SheetContent title="Create PTM" description="Slots are first-come bookable windows. Parents get a notification with a deep link.">
         <div className="space-y-4">
           {teacherName && <p className="text-sm text-muted-foreground">Teacher: <strong className="text-foreground">{teacherName}</strong></p>}
+          {!teacherIdFixed && (
+            <div className="space-y-1.5">
+              <Label>Teacher</Label>
+              <Select value={teacherId} onValueChange={setTeacherId}>
+                <SelectTrigger><SelectValue placeholder="Pick teacher" /></SelectTrigger>
+                <SelectContent>
+                  {(staff ?? []).filter((s) => s.staffType === 'teaching').map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label>Class</Label>
             <Select value={classId} onValueChange={setClassId}>
@@ -234,6 +265,7 @@ export default function PtmPage() {
           open={open}
           onOpenChange={setOpen}
           classes={classes ?? []}
+          staff={staff ?? []}
           teacherIdFixed={user?.role === 'teacher' ? user.staffId : undefined}
           teacherName={user?.role === 'teacher' ? user.name : undefined}
         />

@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/toggle'
 import { SheetContent, Sheet as SheetRoot, Dialog as DialogRoot, DialogContent, DialogHeader } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { useList, useCreate, useUpdate, useBulkWrite, useSoftDelete } from '@/lib/data/hooks'
+import { IS_PROD } from '@/lib/env'
 import { useAuth } from '@/lib/auth'
 import type { SessionDoc, StudentDoc, ClassDoc } from '@/lib/types'
 import { fmtDate } from '@/lib/utils'
@@ -267,9 +268,18 @@ export default function SessionsPage() {
 
   const activate = async (s: SessionDoc) => {
     const others = (sessions ?? []).filter((x) => x.isActive && x.id !== s.id)
-    for (const o of others) await update.mutateAsync({ id: o.id, data: { isActive: false } })
-    await update.mutateAsync({ id: s.id, data: { isActive: true, isCompleted: false } })
-    toast.success(`${s.name} is now the active session`)
+    if (IS_PROD) {
+      // Production invariant: exactly one active session at a time.
+      for (const o of others) await update.mutateAsync({ id: o.id, data: { isActive: false } })
+      await update.mutateAsync({ id: s.id, data: { isActive: true, isCompleted: false } })
+      toast.success(`${s.name} is now the active session`)
+    } else {
+      // Development allows several active sessions side by side for testing.
+      await update.mutateAsync({ id: s.id, data: { isActive: true, isCompleted: false } })
+      toast.success(`${s.name} activated (dev mode: ${others.length} other session(s) left active)`, {
+        description: 'Set VITE_APP_ENV=production to enforce a single active session.',
+      })
+    }
   }
 
   return (
@@ -321,7 +331,7 @@ export default function SessionsPage() {
                       </Button>
                     )}
                     <Button size="sm" variant="ghost" onClick={() => { setEditing(s); setSheetOpen(true) }}>Edit</Button>
-                    {user && !s.isActive && (
+                    {user && (
                       <Button size="sm" variant="ghost" className="text-danger" onClick={() => setConfirmDelete(s)}>Delete</Button>
                     )}
                   </div>
@@ -345,7 +355,9 @@ export default function SessionsPage() {
         open={Boolean(confirmDelete)}
         onOpenChange={(o) => !o && setConfirmDelete(null)}
         title={`Delete session ${confirmDelete?.name}?`}
-        description="It moves to Trash and can be restored later. Nothing is permanently deleted."
+        description={confirmDelete?.isActive
+          ? 'This session is ACTIVE. It moves to Trash and pages fall back to the next available session. Nothing is permanently deleted.'
+          : 'It moves to Trash and can be restored later. Nothing is permanently deleted.'}
         confirmLabel="Move to Trash"
         destructive
         onConfirm={() => {

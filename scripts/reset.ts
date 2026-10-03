@@ -17,7 +17,7 @@ const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'))
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount), projectId: process.env.FIREBASE_PROJECT_ID ?? serviceAccount.project_id })
 const db = admin.firestore()
 
-const COLLECTIONS = ['users', 'sessions', 'classes', 'assignments', 'students', 'staff', 'attendance', 'feeTypes', 'feeAssignments', 'invoices', 'payments', 'exams', 'marks', 'gradingScales', 'reportCards', 'templates', 'certificates', 'notices', 'notifications', 'timetable', 'leaves', 'documents', 'ptms', 'messages', 'calendarEvents', 'runHistory', 'settings']
+const COLLECTIONS = ['users', 'sessions', 'classes', 'assignments', 'students', 'staff', 'attendance', 'feeTypes', 'feeAssignments', 'invoices', 'payments', 'exams', 'marks', 'gradingScales', 'reportCards', 'templates', 'certificates', 'notices', 'notifications', 'timetable', 'timetableConfig', 'leaves', 'documents', 'ptms', 'messages', 'calendarEvents', 'runHistory', 'settings']
 
 async function deleteCollection(colPath: string) {
   const snap = await db.collection(colPath).get()

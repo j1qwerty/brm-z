@@ -88,11 +88,15 @@ service cloud.firestore {
 
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid)
         || (isTeacher() && resource.data.status == 'active');
-      // Only admin can change role/status; users may edit their own profile fields
+      // Only admin can change role/status; users may edit their own profile fields.
+      // linkedGmail may be set by the owner (always drops to pending - only an
+      // admin can approve it), which is how Google sign-in gets whitelisted.
       allow update: if isAdmin()
         || (signedIn() && request.auth.uid == uid
             && request.resource.data.role == resource.data.role
-            && request.resource.data.status == resource.data.status);
+            && request.resource.data.status == resource.data.status
+            && (request.resource.data.get('gmailStatus', null) == resource.data.get('gmailStatus', null)
+                || request.resource.data.get('gmailStatus', null) == 'pending'));
       allow delete: if false; // soft delete only (admin via update)
     }
 
@@ -263,6 +267,13 @@ service cloud.firestore {
 
     // ---------- timetable ----------
     match /timetable/{id} {
+      allow read: if canReadCommon() && notDeleted(resource.data);
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---------- timetableConfig (periods per class-section) ----------
+    match /timetableConfig/{id} {
       allow read: if canReadCommon() && notDeleted(resource.data);
       allow create, update: if isAdmin();
       allow delete: if false;

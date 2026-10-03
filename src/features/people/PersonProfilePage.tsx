@@ -124,7 +124,7 @@ function ProfileTab({ kind, person }: { kind: 'student' | 'staff'; person: Stude
           const s = person as StudentDoc
           return [
             ['Admission no', s.admissionNo], ['Roll no', s.rollNo ?? '-'], ['Date of birth', fmtDate(s.dob)],
-            ['Blood group', s.bloodGroup ?? '-'], ['Guardian', s.guardianName ?? '-'], ['Guardian phone', s.guardianPhone ?? '-'],
+            ['Blood group', s.bloodGroup ?? '-'], ['Guardian', s.guardianName ?? '-'], ['Guardian phone', s.guardianPhone ?? '-'], ['Login Gmail', s.loginEmail ?? '-'],
             ['Phone', s.phone ?? '-'], ['Category', s.category ?? '-'], ['Religion', s.religion ?? '-'],
             ['Admission date', fmtDate(s.admissionDate)], ['Address', s.address ?? '-'],
           ]

@@ -40,10 +40,21 @@ export const firestoreProvider: DataProvider = {
   async list<T>(path: string, opts?: QueryOpts): Promise<T[]> {
     const { db } = getFirebase()!
     const cs = constraints(path, opts)
-    if (!opts?.includeDeleted) cs.push(fsWhere('deletedAt', '==', null))
+    // NOTE: soft-deleted docs are filtered client-side (see below), NOT with a
+    // server `where('deletedAt', '==', null)`. A server-side deletedAt filter
+    // turns EVERY filtered/sorted query into a composite query, which needs a
+    // dedicated composite index per collection — without it Firestore throws
+    // failed-precondition and lists silently stay in "loading" forever
+    // (notifications bell, notices manage, PTM upcoming, assignment matrix...).
+    // Filtering here matches the local/demo provider behavior exactly.
+    // Trade-off: when `limit` is set, a soft-deleted doc can eat a slot, so a
+    // page may show a few rows less. Deleted docs are rare (Trash module), so
+    // this is negligible — and `includeDeleted`/`listDeleted` are unaffected.
     const q = cs.length ? query(collection(db, path), ...cs) : collection(db, path)
     const snap = await getDocs(q)
-    return snap.docs.map((d) => normalize<T>(d.data(), d.id))
+    let rows = snap.docs.map((d) => normalize<T>(d.data(), d.id)) as (T & { deletedAt?: number | null })[]
+    if (!opts?.includeDeleted) rows = rows.filter((r) => r.deletedAt == null)
+    return rows as T[]
   },
 
   async get<T>(path: string, id: string): Promise<T | null> {

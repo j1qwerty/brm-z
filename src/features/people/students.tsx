@@ -32,6 +32,7 @@ const studentSchema = z.object({
   address: z.string().optional(),
   guardianName: z.string().optional(),
   guardianPhone: z.string().optional(),
+  loginEmail: z.string().email('Enter a valid Gmail').optional().or(z.literal('')),
   category: z.string().optional(),
   religion: z.string().optional(),
   admissionDate: z.string().optional(),
@@ -261,11 +262,13 @@ function StudentSheet({
           name: existing.name, gender: existing.gender, dob: existing.dob ?? '', bloodGroup: existing.bloodGroup ?? '',
           classId: existing.classId, section: existing.section, rollNo: existing.rollNo ?? '', phone: existing.phone ?? '',
           address: existing.address ?? '', guardianName: existing.guardianName ?? '', guardianPhone: existing.guardianPhone ?? '',
+          loginEmail: existing.loginEmail ?? '',
           category: existing.category ?? '', religion: existing.religion ?? '', admissionDate: existing.admissionDate ?? '',
         }
       : {
           name: '', gender: 'male', dob: '', bloodGroup: '', classId: '', section: '', rollNo: '', phone: '', address: '',
-          guardianName: '', guardianPhone: '', category: 'General', religion: '', admissionDate: todayStr(),
+          guardianName: '', guardianPhone: '', loginEmail: '',
+          category: 'General', religion: '', admissionDate: todayStr(),
         },
   })
 
@@ -356,6 +359,12 @@ function StudentSheet({
             <div className="space-y-1.5">
               <Label>Student phone</Label>
               <Input {...form.register('phone')} />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Login Gmail (for Google sign-in)</Label>
+              <Input type="email" placeholder="student@gmail.com" {...form.register('loginEmail')} />
+              <p className="text-[11px] text-muted-foreground">Set by you or the class-teacher; the student signs in with Google, then a teacher/admin approves the account in User Accounts.</p>
+              {form.formState.errors.loginEmail && <p className="text-xs text-danger">{form.formState.errors.loginEmail.message}</p>}
             </div>
             <div className="space-y-1.5">
               <Label>Category</Label>

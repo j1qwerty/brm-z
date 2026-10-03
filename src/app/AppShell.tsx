@@ -9,6 +9,7 @@ import { useTheme } from './theme-provider'
 import { THEMES } from '@/lib/themes'
 import { ROLE_LABEL } from '@/lib/permissions'
 import { useList, useUpdate } from '@/lib/data/hooks'
+import { useQueryClient } from '@tanstack/react-query'
 import { runGenerateOnOpen } from '@/lib/generate-on-open'
 import { useGet } from '@/lib/data/hooks'
 import type { NotificationDoc, SessionDoc, SchoolSettingsDoc } from '@/lib/types'
@@ -184,12 +185,21 @@ function NotificationBell() {
 function SessionSwitcher() {
   const { user } = useAuth()
   const { activeSessionId, setActiveSession } = useAppStore()
+  const qc = useQueryClient()
   const { data: sessions } = useList<SessionDoc>('sessions', undefined, { enabled: user?.role === 'admin' || user?.role === 'accountant' })
   const visible = user?.role === 'admin' || user?.role === 'accountant'
   if (!visible || !sessions?.length) return null
   const current = sessions.find((s) => s.id === activeSessionId) ?? sessions.find((s) => s.isActive)
   return (
-    <Select value={current?.id} onValueChange={setActiveSession}>
+    <Select
+      value={current?.id}
+      onValueChange={(id) => {
+        // Switching session must change what every session-scoped page shows
+        // (fees, exams, attendance, timetable filter by this id), so refetch all.
+        setActiveSession(id)
+        void qc.invalidateQueries()
+      }}
+    >
       <SelectTrigger className="h-8 w-36 text-xs" aria-label="Academic session">
         <SelectValue placeholder="Session" />
       </SelectTrigger>
@@ -370,6 +380,9 @@ export function AppShell() {
 }
 
 export { useActiveSession }
+/** Session every session-scoped page (fees, exams, attendance, timetable)
+ *  filters by: the top-bar switcher override, else the isActive session. */
+export const useSessionScope = useActiveSession
 
 // Re-export commonly used bits so feature files can import from shell in a pinch
 export { initials }

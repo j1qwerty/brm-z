@@ -10,7 +10,7 @@
 import type { DataProvider, QueryOpts, BulkOp } from '../../src/lib/data/provider'
 import { applyBaseCreate } from '../../src/lib/data/provider'
 
-type Db = Record<string, Record<string, Record<string, unknown>>>
+export type Db = Record<string, Record<string, Record<string, unknown>>>
 
 export function createInMemoryProvider(): DataProvider & {
   /** Expose the raw db so tests can inspect what was actually written. */

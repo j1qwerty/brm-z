@@ -58,7 +58,7 @@ export interface TestResult {
 
 export interface SuiteContext {
   /** The shared in-memory provider. Tests mutate this; reset between suites with `resetDb()`. */
-  provider: import('./inMemoryProvider').DataProvider & {
+  provider: import('../../src/lib/data/provider').DataProvider & {
     __db: import('./inMemoryProvider').Db
     __reset(): void
   }

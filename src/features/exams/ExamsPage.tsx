@@ -11,10 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { SheetContent, Sheet as SheetRoot } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { useList, useCreate, useUpdate, useSoftDelete } from '@/lib/data/hooks'
+import { useSessionScope } from '@/app/AppShell'
 import { useAuth } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { notifyMany, audienceUserIds } from '@/lib/notify'
-import type { ClassDoc, ExamClassConfig, ExamDoc, MarkDoc, SessionDoc, StudentDoc, SubjectDoc } from '@/lib/types'
+import type { ClassDoc, ExamClassConfig, ExamDoc, MarkDoc, StudentDoc, SubjectDoc } from '@/lib/types'
 import { fmtDate, pct } from '@/lib/utils'
 import { MarksEntryTab, ReportCardsTab } from './examEntry'
 
@@ -192,7 +193,10 @@ function ClassConfigRow({
 
 export function ExamsTab({ classes, sessionId }: { classes: ClassDoc[]; sessionId: string }) {
   const { user } = useAuth()
-  const { data: exams, isLoading } = useList<ExamDoc>('exams')
+  const { data: exams, isLoading } = useList<ExamDoc>(
+    'exams',
+    sessionId ? { where: [['sessionId', '==', sessionId]] } : undefined,
+  )
   const update = useUpdate('exams')
   const softDelete = useSoftDelete('exams')
   const [open, setOpen] = useState(false)
@@ -353,10 +357,13 @@ export function ResultsTab({ classes }: { classes: ClassDoc[] }) {
 
 export default function ExamsPage() {
   const { user } = useAuth()
+  const session = useSessionScope()
+  const sessionId = session?.id ?? ''
   const { data: classes } = useList<ClassDoc>('classes')
-  const { data: sessions } = useList<SessionDoc>('sessions')
-  const { data: exams } = useList<ExamDoc>('exams')
-  const activeSession = sessions?.find((s) => s.isActive)
+  const { data: exams } = useList<ExamDoc>(
+    'exams',
+    sessionId ? { where: [['sessionId', '==', sessionId]] } : undefined,
+  )
   const canEnter = can(user?.role, 'marks.enter')
 
   return (
@@ -364,7 +371,7 @@ export default function ExamsPage() {
       title="Exams & Results"
       info="Create exams with per-class subject configs, enter marks (teachers only for their assigned class-subjects), auto-grade from the CBSE scale, publish results (nothing is visible to students/parents before publish), and generate per-exam or cumulative final report cards."
       tabs={[
-        { key: 'exams', label: 'Exams', badge: exams?.length, content: <ExamsTab classes={classes ?? []} sessionId={activeSession?.id ?? ''} /> },
+        { key: 'exams', label: 'Exams', badge: exams?.length, content: <ExamsTab classes={classes ?? []} sessionId={sessionId} /> },
         ...(canEnter ? [{ key: 'entry', label: 'Marks entry', content: <MarksEntryTab classes={classes ?? []} /> }] : []),
         { key: 'results', label: 'Results', content: <ResultsTab classes={classes ?? []} /> },
         { key: 'reportcards', label: 'Report cards', content: <ReportCardsTab classes={classes ?? []} /> },

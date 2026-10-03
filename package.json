@@ -9,6 +9,11 @@
   },
   "main": "dist-electron/main.cjs",
   "description": "BRM School Management - Indian school management system (Nursery-12), offline-first Firebase app",
+  "author": {
+    "name": "BRM International Public School",
+    "email": "office@bmrcpublicschool.in"
+  },
+  "license": "UNLICENSED",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

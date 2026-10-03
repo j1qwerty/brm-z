@@ -74,8 +74,6 @@ firebase-admin + tsx + dotenv (local scripts only).
 | `pnpm electron:start` | Build, then run the desktop app against the **production** build |
 | `pnpm electron:dist` | Package a Windows installer (NSIS) into `release/` |
 | `pnpm electron:dist:dir` | Unpacked Windows build in `release/` (faster, for testing) |
-
-See [Desktop app (Electron)](#desktop-app-electron) for the full build and packaging guide.
 | `pnpm lint` | ESLint |
 | `pnpm typecheck` | Strict TypeScript check |
 | `pnpm test` | run tests (fast, in-memory — no Firebase, no network) |
@@ -96,6 +94,9 @@ See [Desktop app (Electron)](#desktop-app-electron) for the full build and packa
 | `pnpm netlify:env` | `pnpm netlify:env -- VAR value` (repeat per var) |
 | `pnpm deploy:preview` | Build + draft deploy to Netlify |
 | `pnpm deploy` | Build + production deploy to Netlify |
+
+The desktop installer is written to **`release/BRM-School-Setup-1.0.0.exe`** — see
+[Desktop app (Electron)](#desktop-app-electron) for how to run the app and build it.
 
 ## Quick start (demo mode)
 
@@ -172,36 +173,63 @@ the failed step only. See `sync.md` for the full design.
 The same app ships as a Windows desktop application: a real native shell around the
 production build, not a separate codebase.
 
-### Building the desktop app
+### Running the desktop app
 
 ```bash
-# One-time: the Electron binary is downloaded on first install (~100 MB).
-pnpm install
+pnpm install                # once; downloads the Electron binary (~100 MB)
 
-# Fastest loop while working on the app itself.
-pnpm electron:dev      # Vite + Electron together, hot reload, devtools open
-
-# Package a real installer.
-pnpm electron:dist     # -> release/BRM-School-Setup-1.0.0.exe  (NSIS, per-user install)
-
-# Just run the app the way a user would, without installing anything.
-pnpm electron:start    # builds dist/, then runs it in the shell over file://
-
-# Unpacked build — faster than the installer, good for checking packaging issues.
-pnpm electron:dist:dir # -> release/win-unpacked/BRM School Management.exe
+pnpm electron:dev           # develop the app: Vite + Electron, hot reload, devtools
+pnpm electron:start         # run it like a user would: builds dist/ then opens the shell
 ```
 
-| Command | What it does |
-| --- | --- |
-| `pnpm electron:dev` | Vite dev server + Electron with hot reload; devtools open automatically |
-| `pnpm electron:build` | Bundle `electron/main.ts` + `preload.ts` to `dist-electron/*.cjs` (run automatically by the commands above) |
-| `pnpm electron:start` | Build, then run the **production** build in the shell (loads `dist/` over `file://`) |
-| `pnpm electron:dist` | `pnpm build` + `pnpm icons` + electron-builder → Windows installer in `release/` |
-| `pnpm electron:dist:dir` | Same, unpacked — no installer, just `release/win-unpacked/` |
-| `pnpm icons` | Rasterise `public/favicon.svg` → `build/icon.ico`, `build/icon.png`, `build/tray.png` |
+| Command | What it does | Loads |
+| --- | --- | --- |
+| `pnpm electron:dev` | Dev loop. Vite dev server + Electron, hot reload, devtools open automatically | `http://localhost:5121` |
+| `pnpm electron:start` | Production build in the shell — no dev server needed | `dist/index.html` over `file://` |
+| `pnpm electron:build` | Bundle `electron/main.ts` + `preload.ts` → `dist-electron/*.cjs`. Run automatically by the commands above | — |
 
-`electron:dist` runs `pnpm icons` for you, so you only need it by hand after editing
+`electron:start` is the honest smoke test: same CSP, same hash routing, same relative
+asset URLs as the installed app. To do that without the script:
+
+```bash
+pnpm build
+npx electron . --dist       # BMRC_DESKTOP_DIST=1 does the same
+```
+
+### Building the installer (.exe)
+
+```bash
+pnpm electron:dist          # the installer
+pnpm electron:dist:dir      # unpacked build, no installer (faster)
+```
+
+**Where the files land:**
+
+| Command | Output | Exact path |
+| --- | --- | --- |
+| `pnpm electron:dist` | Windows installer (NSIS) | **`release/BRM-School-Setup-1.0.0.exe`** |
+| `pnpm electron:dist:dir` | Unpacked app folder | `release/win-unpacked/BRM School Management.exe` |
+| both | App-local database | `%APPDATA%\bmrc-school-management\data\bmrc-local.sqlite` |
+| both | Backups | `%APPDATA%\bmrc-school-management\backups\*.sqlite` |
+
+The installer filename carries the version from `package.json`, so it becomes
+`BRM-School-Setup-1.0.1.exe` etc. as you bump the version. It installs **per-user** —
+no admin rights needed — with optional Start-menu and desktop shortcuts.
+
+`electron:dist` runs `pnpm build` and `pnpm icons` for you, so it always packages the
+current code and a freshly rasterised icon. Run `pnpm icons` by hand only after editing
 `public/favicon.svg`.
+
+**⚠️ If the build fails with `EPERM ... rename 'release/win-unpacked.tmp'`**
+
+Windows Defender locks the freshly extracted Electron files (~300 MB) and electron-builder
+cannot rename its temp folder. Run this once in an **elevated** PowerShell, then retry:
+
+```powershell
+Add-MpPreference -ExclusionPath "<your-repo-path>\release"
+```
+
+`pnpm electron:dist` does not need elevation itself — only the exclusion does.
 
 **Reproducing an installer-only bug without packaging:**
 
@@ -218,8 +246,6 @@ show up. `BMRC_DESKTOP_DIST=1` does the same thing if you prefer an env var.
 
 - Built **unsigned**. Windows SmartScreen will warn on first run ("more info → run
   anyway"). Code signing needs a certificate you own — none is committed here.
-- Installs per-user (no admin rights), with optional Start-menu and desktop
-  shortcuts, and lets the user pick the install folder.
 - Only `dist/`, `dist-electron/` and `package.json` are packaged: no `node_modules`,
   scripts, or service-account keys.
 - Upgrading = installing the new version over the old one. The local database lives

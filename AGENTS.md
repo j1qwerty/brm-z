@@ -45,6 +45,7 @@ Netlify hosts the static build; Firestore Security Rules are the authorization l
 | `pnpm electron:dev` | Electron + Vite together, hot reload, devtools |
 | `pnpm electron:start` | Electron against the production build |
 | `pnpm electron:dist` | electron-builder → Windows NSIS installer in `release/` |
+| `pnpm electron:dist:dir` | Same, unpacked (no installer) — quicker for checking packaging |
 | `pnpm lint` | ESLint (flat config) |
 | `pnpm typecheck` | `tsc --noEmit` strict pass |
 | `pnpm test` | Run all in-memory CRUD suites (sessions, classes, subjects, students, staff, teachers, templates, users, generation, integration). Prints pass/fail summary, exits 1 on failure. Pure in-memory, no Firebase/DOM needed. |
@@ -64,6 +65,9 @@ Netlify hosts the static build; Firestore Security Rules are the authorization l
 | `pnpm netlify:env` | Set env vars: `pnpm netlify:env -- VITE_FIREBASE_API_KEY <value>` |
 | `pnpm deploy:preview` | Build + deploy a draft preview to Netlify |
 | `pnpm deploy` | Build + deploy production to Netlify |
+
+Installer output: **`release/BRM-School-Setup-<version>.exe`** (version from
+`package.json`); unpacked output `release/win-unpacked/BRM School Management.exe`.
 
 ## Data flow (must-know)
 
@@ -139,7 +143,14 @@ and ask the owner to confirm before moving on. Never silently skip a step.
   `index.html` otherwise produces a hash the browser will never match.
 - **Blank tray icon:** `pnpm icons` regenerates `build/tray.png`, which
   `electron:build` copies into `dist-electron/` and electron-builder ships as an
-  `extraResources` entry.
+  `extraResources` entry. Those land at `process.resourcesPath` in a packaged app,
+  NOT beside `main.cjs` inside `app.asar` — resolve them with `assetPath()` in
+  `electron/main.ts`, never with a bare `join(__dirname_, ...)`.
+- **`pnpm electron:dist` fails with `EPERM ... rename 'release\win-unpacked.tmp'`:**
+  Windows Defender locks the freshly extracted Electron files and electron-builder
+  cannot rename its temp folder. Fix once in an ELEVATED PowerShell, then retry:
+  `Add-MpPreference -ExclusionPath "<repo>\release"`. The build itself does not need
+  elevation. This is not a config bug — do not "fix" electron-builder.yml for it.
 
 ## Architecture map
 

@@ -37,9 +37,23 @@ const VITE_URL = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5121'
 const RENDERER_DIST = app.isPackaged
   ? join(__dirname_, 'dist/index.html')
   : join(__dirname_, '../dist/index.html')
-// Generated from public/favicon.svg by `pnpm icons`. Shipped as extraResources
-// so the tray and window icons survive packaging.
-const TRAY_ICON = join(__dirname_, 'tray.png')
+/**
+ * Resolve a runtime asset that electron-builder ships via `extraResources`.
+ *
+ * In a packaged app `__dirname_` points INSIDE app.asar, while extraResources
+ * are unpacked next to it at `process.resourcesPath`. During development the
+ * icons sit beside the bundled main process in `dist-electron/`. Both layouts
+ * are checked, because a missing icon means a blank tray rather than an error.
+ */
+function assetPath(name: string): string {
+  const candidates = app.isPackaged
+    ? [join(process.resourcesPath, name), join(__dirname_, name)]
+    : [join(__dirname_, name), join(process.resourcesPath, name)]
+  return candidates.find((p) => existsSync(p)) ?? candidates[0]
+}
+
+const TRAY_ICON = assetPath('tray.png')
+const APP_ICON = assetPath('icon.png')
 
 // ---------------------------------------------------------------- single instance
 if (!app.requestSingleInstanceLock()) {
@@ -159,7 +173,7 @@ function createWindow() {
     // Matches the light theme so the window never flashes dark on launch.
     backgroundColor: '#ffffff',
     title: 'BRM School Management',
-    icon: existsSync(join(__dirname_, 'icon.png')) ? join(__dirname_, 'icon.png') : undefined,
+    icon: existsSync(APP_ICON) ? APP_ICON : undefined,
     autoHideMenuBar: false,
     webPreferences: {
       preload: join(__dirname_, 'preload.cjs'),

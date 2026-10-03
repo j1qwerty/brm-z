@@ -393,6 +393,29 @@ export function applyRemoteDoc(collection: string, remote: Record<string, unknow
   })
 }
 
+/**
+ * Force-adopts a server document: the server copy wins outright and any queued
+ * local op for it is dropped. Used only where the server is authoritative by
+ * definition (the signed-in user's own profile), never for normal pulls —
+ * normal pulls go through mergeRemote so offline edits are not lost.
+ */
+export function forceAdoptRemoteDoc(collection: string, remote: Record<string, unknown> & { id: string }): void {
+  inTransaction(() => {
+    const id = String(remote.id)
+    run('DELETE FROM outbox WHERE collection = ? AND doc_id = ?', [collection, id])
+    writeOnce({
+      collection,
+      id,
+      op: readDoc(collection, id) ? 'update' : 'create',
+      patch: stripSyncFields(remote),
+      origin: 'remote',
+      queue: false,
+      clean: true,
+      lamport: Number(remote.syncLamport ?? 0) || lamportNow(),
+    })
+  })
+}
+
 function stripSyncFields(data: Record<string, unknown>): Record<string, unknown> {
   const { syncLamport: _a, syncOpId: _b, syncDeviceId: _c, id: _d, ...rest } = data
   return rest
@@ -450,12 +473,14 @@ function insertConflict(collection: string, docId: string, c: FieldConflict, loc
 
 export const localProvider: DataProvider & {
   applyRemoteDoc: typeof applyRemoteDoc
+  forceAdoptRemoteDoc: typeof forceAdoptRemoteDoc
   writeLocal: typeof writeLocal
   localTransaction: typeof localTransaction
   pendingKeysFor: typeof pendingKeysFor
 } = {
   mode: 'demo',
   applyRemoteDoc,
+  forceAdoptRemoteDoc,
   writeLocal,
   localTransaction,
   pendingKeysFor,

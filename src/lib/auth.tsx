@@ -5,6 +5,7 @@ import {
 } from 'firebase/auth'
 import { getFirebase, googleProvider } from './firebase'
 import { dataProvider, DEMO_MODE } from './data/index'
+import { ensureOwnUserDoc } from './sync/userBootstrap'
 import type { UserDoc, Role } from './types'
 
 type AuthState = 'booting' | 'signedOut' | 'pending' | 'active'
@@ -74,9 +75,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
       try {
-        let doc = await dataProvider.get<UserDoc>('users', fbUser.uid)
+        // Local-first, except for our own profile: a fresh device has no local
+        // users/{uid} yet, and a stale copy can still read "pending" after an
+        // admin approved it elsewhere. ensureOwnUserDoc() falls back to the
+        // server and adopts the authoritative doc locally.
+        let doc = await ensureOwnUserDoc(fbUser.uid)
         if (!doc) {
-          // First Google sign-in: create a pending users doc (role set via complete-profile screen)
+          // Genuinely new sign-in: create a pending users doc (role set via complete-profile screen)
           doc = {
             id: fbUser.uid,
             name: fbUser.displayName ?? (fbUser.email?.split('@')[0] ?? 'New user'),

@@ -18,7 +18,7 @@ import { runSuite } from './harness'
 import type { DataProvider, QueryOpts, BulkOp } from '../../src/lib/data/provider'
 import type { PlanStepId } from '../../src/lib/sync/schema'
 import type { SyncProgress } from '../../src/lib/sync/syncEngine'
-import { localProvider, localTransaction, localStats, applyRemoteDoc, newOpId, pendingKeysFor, readDoc } from '../../src/lib/sync/localProvider'
+import { localProvider, localTransaction, localStats, applyRemoteDoc, forceAdoptRemoteDoc, newOpId, pendingKeysFor, readDoc } from '../../src/lib/sync/localProvider'
 import { mergeRemote } from '../../src/lib/sync/conflicts'
 import { getDb, openDb } from '../../src/lib/sync/sqlite'
 import { KEEP_BACKUPS, createBackup, listBackups, restoreBackup, verifyBackup } from '../../src/lib/sync/backups'
@@ -501,6 +501,36 @@ export function syncSuite() {
           t.truthy(ok.ok, 'correct code accepted')
           t.equals((await localProvider.list('classes')).length, 0, 'local data wiped')
           t.equals((await resetLocal(challenge.code)).ok, false, 'code is single use')
+        },
+      })
+
+
+      tests.push({
+        name: 'force-adopting the server profile overwrites a stale local pending role',
+        run: async (t: AssertAPI) => {
+          resetLocalDb()
+          // What the buggy first-run path left behind: a locally created
+          // "pending student" doc for an account that is really an active teacher.
+          await localProvider.create('users', {
+            name: 'Sunita Sharma', email: 'teacher@bmrc.demo', role: 'student', status: 'pending',
+          }, 'u-teacher-uid')
+          t.truthy(pendingOpCount() > 0, 'the bogus pending doc queued a create')
+
+          forceAdoptRemoteDoc('users', {
+            id: 'u-teacher-uid',
+            name: 'Sunita Sharma',
+            email: 'teacher@bmrc.demo',
+            role: 'teacher',
+            status: 'active',
+            staffId: 'st-001',
+          })
+
+          const adopted = await localProvider.get<Record<string, unknown>>('users', 'u-teacher-uid')
+          t.equals(adopted!.role, 'teacher', 'server role wins over the stale local role')
+          t.equals(adopted!.status, 'active', 'server status wins (no more "pending approval" screen)')
+          t.equals(adopted!.staffId, 'st-001', 'linked staff id preserved')
+          t.equals(pendingOpCount(), 0, 'the queued bogus create is dropped, so it cannot overwrite the server')
+          t.equals(readDoc('users', 'u-teacher-uid')!.dirty, 0, 'adopted doc is clean, nothing to push')
         },
       })
 
